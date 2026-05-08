@@ -1,0 +1,13 @@
+services:
+  siri-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_KEY: ${VITE_SUPABASE_KEY}
+    image: siri-admin:latest
+    container_name: siri-admin
+    ports:
+      - "5173:5173"
+    restart: unless-stopped
