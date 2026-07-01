@@ -108,16 +108,13 @@ async function loadTodayStats() {
   }
   loadingToday.value = true
   try {
-    const start = new Date()
-    start.setHours(0, 0, 0, 0)
-    const end = new Date()
-    end.setHours(23, 59, 59, 999)
+    const today = fmtDateInput(new Date())
     const { data, error } = await supabase
       .from('bills')
       .select('total, discount_amount')
       .eq('storeid', selectedStoreId.value)
-      .gte('timestamp', start.toISOString())
-      .lte('timestamp', end.toISOString())
+      .gte('timestamp', `${today}T00:00:00`)
+      .lte('timestamp', `${today}T23:59:59`)
     if (error) throw error
     const rows = data ?? []
     todayCount.value = rows.length
@@ -159,8 +156,8 @@ async function loadBills() {
         `id, subtotal, total, paymentmethod, timestamp, status,
          discount_amount, discount_percentage,
          storeid, customerid, userid, createdby, created_at,
-         customers:customerid ( id, name, phone, email, address ),
-         users:userid ( id, name, email, role )`,
+         customers ( id, name, phone, email, address ),
+         users!userid ( id, name, email, role )`,
         { count: 'exact' }
       )
       .eq('storeid', selectedStoreId.value)
@@ -217,7 +214,7 @@ async function loadItems(billId: string) {
       .from('billitems')
       .select(
         `id, billid, productid, quantity, price, total,
-         products:productid ( id, name, price, selling_price, barcode )`
+         products ( id, name, price, selling_price, barcode )`
       )
       .eq('billid', billId)
       .order('id', { ascending: true })
