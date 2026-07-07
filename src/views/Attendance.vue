@@ -18,6 +18,7 @@ import {
   LogIn,
   LogOut,
 } from 'lucide-vue-next'
+import { format, parseISO } from 'date-fns'
 import { supabase } from '../lib/supabase'
 import { fmtDate, fmtDateInput } from '../lib/format'
 import type {
@@ -47,6 +48,16 @@ const dateFrom = ref(fmtDateInput(new Date()))
 const dateTo = ref(fmtDateInput(new Date()))
 const employeeFilter = ref('')
 const photoPreview = ref<string | null>(null)
+const viewMode = ref<'days' | 'scans'>('days')
+
+// toast (top-right)
+const toast = ref<string | null>(null)
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+function showToast(msg: string) {
+  toast.value = msg
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => (toast.value = null), 7000)
+}
 
 // devices
 const devices = ref<AttendanceDevice[]>([])
@@ -125,6 +136,9 @@ async function addEmployee() {
     })
     if (err) throw err
     newName.value = ''
+    showToast(
+      `${name} added — they must scan their face on the shop phone (popup at the top right of the app) before attendance works.`
+    )
     await loadEmployees()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to add employee'
@@ -183,6 +197,87 @@ const presentToday = computed(() => {
   for (const r of records.value) seen.add(r.employee_id)
   return seen.size
 })
+
+// Pair scans into day-wise sessions: each IN opens a session, the next OUT
+// of the same employee on the same day closes it. Orphan OUTs (e.g. IN was
+// made yesterday or a record is still syncing) get their own row.
+interface DaySession {
+  key: string
+  date: string
+  employeeId: string
+  name: string
+  inRec: AttendanceRecord | null
+  outRec: AttendanceRecord | null
+}
+
+const sessions = computed<DaySession[]>(() => {
+  const asc = [...records.value].sort((a, b) => a.ts.localeCompare(b.ts))
+  const open = new Map<string, DaySession>()
+  const list: DaySession[] = []
+  for (const r of asc) {
+    const date = r.ts.slice(0, 10)
+    const key = `${r.employee_id}|${date}`
+    const name = r.attendance_employees?.name ?? r.employee_id
+    if (r.type === 'in') {
+      const s: DaySession = {
+        key: `${key}|${r.id}`,
+        date,
+        employeeId: r.employee_id,
+        name,
+        inRec: r,
+        outRec: null,
+      }
+      list.push(s)
+      open.set(key, s)
+    } else {
+      const s = open.get(key)
+      if (s && !s.outRec) {
+        s.outRec = r
+        open.delete(key)
+      } else {
+        list.push({
+          key: `${key}|${r.id}`,
+          date,
+          employeeId: r.employee_id,
+          name,
+          inRec: null,
+          outRec: r,
+        })
+      }
+    }
+  }
+  return list.reverse()
+})
+
+function fmtTime(s: string | null | undefined): string {
+  if (!s) return '—'
+  try {
+    return format(parseISO(s), 'hh:mm a')
+  } catch {
+    return '—'
+  }
+}
+
+function fmtDay(s: string): string {
+  try {
+    return format(parseISO(s), 'dd MMM yyyy')
+  } catch {
+    return s
+  }
+}
+
+function sessionDuration(s: DaySession): string {
+  if (!s.inRec || !s.outRec) return '—'
+  const ms = new Date(s.outRec.ts).getTime() - new Date(s.inRec.ts).getTime()
+  if (ms <= 0) return '—'
+  const h = Math.floor(ms / 3_600_000)
+  const m = Math.round((ms % 3_600_000) / 60_000)
+  return h ? `${h}h ${m}m` : `${m}m`
+}
+
+function isToday(date: string): boolean {
+  return date === fmtDateInput(new Date())
+}
 
 // ---------------- devices ----------------
 
@@ -321,7 +416,25 @@ function isOnline(d: AttendanceDevice): boolean {
             </option>
           </select>
         </div>
-        <span class="chip ml-auto">{{ records.length }} scans · {{ presentToday }} people</span>
+        <div class="ml-auto flex items-center gap-2">
+          <div class="flex rounded-lg border border-[var(--color-border)] overflow-hidden">
+            <button
+              class="px-3 py-1.5 text-xs"
+              :class="viewMode === 'days' ? 'bg-[var(--color-surface-2)] font-semibold' : 'text-[var(--color-text-dim)]'"
+              @click="viewMode = 'days'"
+            >
+              Day view
+            </button>
+            <button
+              class="px-3 py-1.5 text-xs"
+              :class="viewMode === 'scans' ? 'bg-[var(--color-surface-2)] font-semibold' : 'text-[var(--color-text-dim)]'"
+              @click="viewMode = 'scans'"
+            >
+              All scans
+            </button>
+          </div>
+          <span class="chip">{{ records.length }} scans · {{ presentToday }} people</span>
+        </div>
       </div>
 
       <div class="card overflow-hidden">
@@ -335,6 +448,61 @@ function isOnline(d: AttendanceDevice): boolean {
           <Inbox :size="28" class="mx-auto mb-2 opacity-60" />
           No scans in this period.
         </div>
+
+        <!-- Day view: one row per work session (IN..OUT pair) -->
+        <table v-else-if="viewMode === 'days'" class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs text-[var(--color-text-dim)] border-b border-[var(--color-border)]">
+              <th class="px-4 py-2.5 font-medium">Employee</th>
+              <th class="px-4 py-2.5 font-medium">Date</th>
+              <th class="px-4 py-2.5 font-medium">IN</th>
+              <th class="px-4 py-2.5 font-medium">OUT</th>
+              <th class="px-4 py-2.5 font-medium hidden md:table-cell">Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="s in sessions"
+              :key="s.key"
+              class="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface-2)]/50"
+            >
+              <td class="px-4 py-2.5 font-medium">{{ s.name }}</td>
+              <td class="px-4 py-2.5 tabular-nums text-[var(--color-text-muted)]">
+                {{ fmtDay(s.date) }}
+              </td>
+              <td class="px-4 py-2.5">
+                <div v-if="s.inRec" class="flex items-center gap-2">
+                  <img
+                    v-if="s.inRec.photo_url"
+                    :src="s.inRec.photo_url"
+                    class="h-9 w-9 rounded-md object-cover cursor-pointer border border-[var(--color-border)]"
+                    @click="photoPreview = s.inRec.photo_url"
+                  />
+                  <span class="tabular-nums text-green-400">{{ fmtTime(s.inRec.ts) }}</span>
+                </div>
+                <span v-else class="text-[var(--color-text-dim)]">—</span>
+              </td>
+              <td class="px-4 py-2.5">
+                <div v-if="s.outRec" class="flex items-center gap-2">
+                  <img
+                    v-if="s.outRec.photo_url"
+                    :src="s.outRec.photo_url"
+                    class="h-9 w-9 rounded-md object-cover cursor-pointer border border-[var(--color-border)]"
+                    @click="photoPreview = s.outRec.photo_url"
+                  />
+                  <span class="tabular-nums text-amber-400">{{ fmtTime(s.outRec.ts) }}</span>
+                </div>
+                <span v-else-if="isToday(s.date)" class="chip chip-success">Still in</span>
+                <span v-else class="text-[var(--color-text-dim)]">—</span>
+              </td>
+              <td class="px-4 py-2.5 hidden md:table-cell tabular-nums text-[var(--color-text-muted)]">
+                {{ sessionDuration(s) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- All scans: raw record list -->
         <table v-else class="w-full text-sm">
           <thead>
             <tr class="text-left text-xs text-[var(--color-text-dim)] border-b border-[var(--color-border)]">
@@ -578,5 +746,30 @@ function isOnline(d: AttendanceDevice): boolean {
     >
       <img :src="photoPreview" class="max-h-full max-w-full rounded-lg" />
     </div>
+
+    <!-- top-right toast -->
+    <Transition name="toast">
+      <div
+        v-if="toast"
+        class="fixed top-4 right-4 z-50 max-w-sm card p-3 flex items-start gap-2 text-sm border-amber-500/40 bg-[var(--color-surface)] shadow-xl"
+      >
+        <ScanFace :size="18" class="text-amber-400 shrink-0 mt-0.5" />
+        <p>{{ toast }}</p>
+      </div>
+    </Transition>
   </div>
 </template>
+
+<style scoped>
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.25s,
+    transform 0.25s;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+</style>
