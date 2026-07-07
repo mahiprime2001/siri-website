@@ -60,15 +60,6 @@ const loadingDevices = ref(false)
 const creatingFor = ref<string | null>(null)
 const copiedCode = ref<string | null>(null)
 
-// toast (top-right)
-const toast = ref<string | null>(null)
-let toastTimer: ReturnType<typeof setTimeout> | undefined
-function showToast(msg: string) {
-  toast.value = msg
-  clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value = null), 7000)
-}
-
 const selectedStore = computed(() =>
   stores.value.find((s) => s.id === selectedStoreId.value)
 )
@@ -181,9 +172,6 @@ async function addEmployee() {
     })
     if (err) throw err
     newName.value = ''
-    showToast(
-      `${name} added — they must scan their face on the shop phone (popup at the top right of the app) before attendance works.`
-    )
     await loadEmployees()
     loadRailStats()
   } catch (e) {
@@ -886,16 +874,6 @@ function isOnline(d: AttendanceDevice): boolean {
       <img :src="photoPreview" class="max-h-full max-w-full rounded-lg" />
     </div>
 
-    <!-- top-right toast -->
-    <Transition name="toast">
-      <div
-        v-if="toast"
-        class="fixed top-4 right-4 z-50 max-w-sm card p-3 flex items-start gap-2 text-sm border-amber-500/40 bg-[var(--color-surface)] shadow-xl"
-      >
-        <ScanFace :size="18" class="text-amber-400 shrink-0 mt-0.5" />
-        <p>{{ toast }}</p>
-      </div>
-    </Transition>
   </div>
 </template>
 
@@ -1032,15 +1010,4 @@ function isOnline(d: AttendanceDevice): boolean {
   border: 1px solid var(--color-border);
 }
 
-.toast-enter-active,
-.toast-leave-active {
-  transition:
-    opacity 0.25s,
-    transform 0.25s;
-}
-.toast-enter-from,
-.toast-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
 </style>
