@@ -41,6 +41,40 @@ export interface BillItem {
   products?: Product | null
 }
 
+export interface AttendanceEmployee {
+  id: string
+  store_id: string
+  name: string
+  status: string // active | disabled
+  enroll_status: string // pending | enrolled
+  photo_url: string | null
+  enrolled_at: string | null
+  created_at: string | null
+}
+
+export interface AttendanceRecord {
+  id: string
+  employee_id: string
+  store_id: string
+  device_id: string | null
+  type: string // in | out
+  ts: string
+  match_score: number | null
+  photo_url: string | null
+  attendance_employees?: { name: string } | null
+}
+
+export interface AttendanceDevice {
+  id: string
+  store_id: string
+  name: string | null
+  activation_code: string | null
+  status: string // unclaimed | active | disabled
+  device_info: string | null
+  last_seen: string | null
+  activated_at: string | null
+}
+
 export interface Bill {
   id: string
   subtotal: number | null

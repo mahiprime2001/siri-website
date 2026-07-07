@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { LogOut, Receipt } from 'lucide-vue-next'
+import { CalendarCheck, LogOut, Receipt } from 'lucide-vue-next'
 import { useAuth } from '../lib/auth'
 
 const { user, logout } = useAuth()
@@ -58,6 +58,14 @@ function handleLogout() {
           <Receipt :size="16" />
           <span>Bills by store</span>
         </router-link>
+        <router-link
+          :to="{ name: 'attendance' }"
+          class="nav-link"
+          active-class="active"
+        >
+          <CalendarCheck :size="16" />
+          <span>Attendance</span>
+        </router-link>
       </nav>
     </aside>
 
@@ -91,6 +99,18 @@ function handleLogout() {
           </button>
         </div>
       </header>
+      <nav
+        class="md:hidden flex gap-1 px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg)]/85"
+      >
+        <router-link :to="{ name: 'bills' }" class="nav-link flex-1 justify-center" active-class="active">
+          <Receipt :size="15" />
+          <span>Bills</span>
+        </router-link>
+        <router-link :to="{ name: 'attendance' }" class="nav-link flex-1 justify-center" active-class="active">
+          <CalendarCheck :size="15" />
+          <span>Attendance</span>
+        </router-link>
+      </nav>
       <router-view />
     </main>
   </div>
