@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import {
   Store as StoreIcon,
   Users,
-  CalendarCheck,
   Smartphone,
   Plus,
   RefreshCw,
@@ -15,13 +14,14 @@ import {
   CheckCircle2,
   AlertCircle,
   Inbox,
-  LogIn,
-  LogOut,
   Clock,
+  ChevronDown,
+  ChevronRight,
+  X,
 } from 'lucide-vue-next'
 import { format, parseISO } from 'date-fns'
 import { supabase } from '../lib/supabase'
-import { fmtDate, fmtDateInput } from '../lib/format'
+import { fmtDateInput } from '../lib/format'
 import type {
   AttendanceDevice,
   AttendanceEmployee,
@@ -29,53 +29,44 @@ import type {
   Store,
 } from '../lib/types'
 
-type Tab = 'attendance' | 'employees' | 'devices'
+// ---------------- state ----------------
 
 const stores = ref<Store[]>([])
 const selectedStoreId = ref<string>('')
-const tab = ref<Tab>('attendance')
 const error = ref<string | null>(null)
 
-// per-shop rail stats
-const railStats = ref<Record<string, { employees: number; present: number }>>({})
+type Preset = 'today' | 'yesterday' | 'custom'
+const preset = ref<Preset>('today')
+const dateFrom = ref(fmtDateInput(new Date()))
+const dateTo = ref(fmtDateInput(new Date()))
 
-// employees
 const employees = ref<AttendanceEmployee[]>([])
-const loadingEmployees = ref(false)
+const records = ref<AttendanceRecord[]>([])
+const loading = ref(false)
+const expanded = ref<Record<string, boolean>>({})
+const photoPreview = ref<string | null>(null)
+
+type Drawer = 'members' | 'devices' | null
+const drawer = ref<Drawer>(null)
+
+// members drawer
 const newName = ref('')
 const addingEmployee = ref(false)
 
-// attendance
-const records = ref<AttendanceRecord[]>([])
-const loadingRecords = ref(false)
-const dateFrom = ref(fmtDateInput(new Date()))
-const dateTo = ref(fmtDateInput(new Date()))
-const employeeFilter = ref('')
-const photoPreview = ref<string | null>(null)
-const viewMode = ref<'days' | 'scans'>('days')
-
-// devices (all shops, grouped)
+// devices drawer
 const devices = ref<AttendanceDevice[]>([])
 const loadingDevices = ref(false)
-const creatingFor = ref<string | null>(null)
+const creatingDevice = ref(false)
 const copiedCode = ref<string | null>(null)
 
 const selectedStore = computed(() =>
   stores.value.find((s) => s.id === selectedStoreId.value)
 )
+const singleDay = computed(() => dateFrom.value === dateTo.value)
 
-const devicesByStore = computed(() => {
-  const map: Record<string, AttendanceDevice[]> = {}
-  for (const d of devices.value) {
-    ;(map[d.store_id] ??= []).push(d)
-  }
-  return map
-})
+// ---------------- loading ----------------
 
-onMounted(async () => {
-  await loadStores()
-  loadRailStats()
-})
+onMounted(loadStores)
 
 async function loadStores() {
   try {
@@ -93,56 +84,34 @@ async function loadStores() {
   }
 }
 
-async function loadRailStats() {
-  try {
-    const today = fmtDateInput(new Date())
-    const [emps, recs] = await Promise.all([
-      supabase.from('attendance_employees').select('id, store_id, status'),
-      supabase
-        .from('attendance_records')
-        .select('store_id, employee_id')
-        .gte('ts', `${today}T00:00:00`),
-    ])
-    const stats: Record<string, { employees: number; present: number }> = {}
-    for (const e of (emps.data ?? []) as { store_id: string; status: string }[]) {
-      const s = (stats[e.store_id] ??= { employees: 0, present: 0 })
-      if (e.status === 'active') s.employees++
-    }
-    const seen = new Set<string>()
-    for (const r of (recs.data ?? []) as { store_id: string; employee_id: string }[]) {
-      const key = `${r.store_id}|${r.employee_id}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      const s = (stats[r.store_id] ??= { employees: 0, present: 0 })
-      s.present++
-    }
-    railStats.value = stats
-  } catch {
-    /* stats are decorative */
+function setPreset(p: Preset) {
+  preset.value = p
+  const today = fmtDateInput(new Date())
+  if (p === 'today') {
+    dateFrom.value = today
+    dateTo.value = today
+  } else if (p === 'yesterday') {
+    const y = new Date()
+    y.setDate(y.getDate() - 1)
+    dateFrom.value = fmtDateInput(y)
+    dateTo.value = fmtDateInput(y)
   }
 }
 
-watch([selectedStoreId, tab], () => refresh())
-watch([dateFrom, dateTo, employeeFilter], () => {
-  if (tab.value === 'attendance') loadRecords()
+watch(selectedStoreId, () => {
+  refresh()
+  if (drawer.value === 'devices') loadDevices()
 })
+watch([dateFrom, dateTo], () => loadRecords())
 
-function refresh() {
-  error.value = null
-  loadRailStats()
-  if (tab.value === 'devices') {
-    loadAllDevices()
-    return
-  }
+async function refresh() {
   if (!selectedStoreId.value) return
-  loadEmployees()
-  if (tab.value === 'attendance') loadRecords()
+  error.value = null
+  expanded.value = {}
+  await Promise.all([loadEmployees(), loadRecords()])
 }
-
-// ---------------- employees ----------------
 
 async function loadEmployees() {
-  loadingEmployees.value = true
   try {
     const { data, error: err } = await supabase
       .from('attendance_employees')
@@ -153,10 +122,168 @@ async function loadEmployees() {
     employees.value = (data ?? []) as AttendanceEmployee[]
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load employees'
-  } finally {
-    loadingEmployees.value = false
   }
 }
+
+async function loadRecords() {
+  if (!selectedStoreId.value) return
+  loading.value = true
+  try {
+    const { data, error: err } = await supabase
+      .from('attendance_records')
+      .select('id, employee_id, store_id, device_id, type, ts, match_score, photo_url')
+      .eq('store_id', selectedStoreId.value)
+      .gte('ts', `${dateFrom.value}T00:00:00`)
+      .lte('ts', `${dateTo.value}T23:59:59`)
+      .order('ts', { ascending: true })
+    if (err) throw err
+    records.value = (data ?? []) as AttendanceRecord[]
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to load attendance'
+  } finally {
+    loading.value = false
+  }
+}
+
+// ---------------- per-employee summary ----------------
+
+interface Session {
+  inRec: AttendanceRecord | null
+  outRec: AttendanceRecord | null
+}
+interface EmpDay {
+  date: string
+  sessions: Session[]
+}
+interface EmpSummary {
+  emp: AttendanceEmployee
+  daysPresent: number
+  totalDays: number
+  leaves: number
+  days: EmpDay[] // newest first
+  // single-day convenience
+  firstIn: AttendanceRecord | null
+  lastOut: AttendanceRecord | null
+  hours: string
+}
+
+function dayMs(d: string): number {
+  return new Date(`${d}T00:00:00`).getTime()
+}
+
+const summaries = computed<EmpSummary[]>(() => {
+  const byEmp = new Map<string, AttendanceRecord[]>()
+  for (const r of records.value) {
+    ;(byEmp.get(r.employee_id) ?? byEmp.set(r.employee_id, []).get(r.employee_id)!).push(r)
+  }
+  const today = fmtDateInput(new Date())
+  const rangeEnd = dateTo.value < today ? dateTo.value : today
+
+  return employees.value.map((emp) => {
+    const recs = byEmp.get(emp.id) ?? []
+    // group by date, pair in->out
+    const dayMap = new Map<string, EmpDay>()
+    for (const r of recs) {
+      const date = r.ts.slice(0, 10)
+      let day = dayMap.get(date)
+      if (!day) {
+        day = { date, sessions: [] }
+        dayMap.set(date, day)
+      }
+      const openSession = day.sessions.find((s) => s.inRec && !s.outRec)
+      if (r.type === 'in') {
+        day.sessions.push({ inRec: r, outRec: null })
+      } else if (openSession) {
+        openSession.outRec = r
+      } else {
+        day.sessions.push({ inRec: null, outRec: r })
+      }
+    }
+    const days = [...dayMap.values()].sort((a, b) => b.date.localeCompare(a.date))
+
+    // leaves: counted from when they joined, never into the future
+    const created = (emp.created_at ?? '').slice(0, 10)
+    const start =
+      created && created > dateFrom.value ? created : dateFrom.value
+    let totalDays = 0
+    if (start <= rangeEnd) {
+      totalDays = Math.round((dayMs(rangeEnd) - dayMs(start)) / 86_400_000) + 1
+    }
+    const daysPresent = days.length
+    const leaves = Math.max(0, totalDays - daysPresent)
+
+    // single-day columns
+    const todaySessions = days[0]?.sessions ?? []
+    const firstIn = todaySessions.find((s) => s.inRec)?.inRec ?? null
+    const outs = todaySessions.filter((s) => s.outRec)
+    const lastOut = outs.length ? outs[outs.length - 1].outRec : null
+
+    return {
+      emp,
+      daysPresent,
+      totalDays,
+      leaves,
+      days,
+      firstIn,
+      lastOut,
+      hours: days[0] ? dayHours(days[0]) : '—',
+    }
+  })
+})
+
+const presentCount = computed(
+  () => summaries.value.filter((s) => s.daysPresent > 0).length
+)
+const totalLeaves = computed(() =>
+  summaries.value
+    .filter((s) => s.emp.status === 'active')
+    .reduce((sum, s) => sum + s.leaves, 0)
+)
+const stillIn = computed(() => {
+  const today = fmtDateInput(new Date())
+  let n = 0
+  for (const s of summaries.value) {
+    const d = s.days.find((x) => x.date === today)
+    if (d && d.sessions.some((x) => x.inRec && !x.outRec)) n++
+  }
+  return n
+})
+
+function dayHours(day: EmpDay): string {
+  let ms = 0
+  for (const s of day.sessions) {
+    if (s.inRec && s.outRec) {
+      ms += new Date(s.outRec.ts).getTime() - new Date(s.inRec.ts).getTime()
+    }
+  }
+  if (ms <= 0) return '—'
+  const h = Math.floor(ms / 3_600_000)
+  const m = Math.round((ms % 3_600_000) / 60_000)
+  return h ? `${h}h ${m}m` : `${m}m`
+}
+
+function fmtTime(s: string | null | undefined): string {
+  if (!s) return '—'
+  try {
+    return format(parseISO(s), 'hh:mm a')
+  } catch {
+    return '—'
+  }
+}
+
+function fmtDay(s: string): string {
+  try {
+    return format(parseISO(s), 'EEE, dd MMM')
+  } catch {
+    return s
+  }
+}
+
+function isToday(date: string): boolean {
+  return date === fmtDateInput(new Date())
+}
+
+// ---------------- members drawer actions ----------------
 
 async function addEmployee() {
   const name = newName.value.trim()
@@ -173,7 +300,6 @@ async function addEmployee() {
     if (err) throw err
     newName.value = ''
     await loadEmployees()
-    loadRailStats()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to add employee'
   } finally {
@@ -182,7 +308,7 @@ async function addEmployee() {
 }
 
 async function reEnroll(emp: AttendanceEmployee) {
-  if (!confirm(`Re-enroll ${emp.name}? Their current face data will be replaced at the next scan on the shop phone.`)) return
+  if (!confirm(`Re-enroll ${emp.name}? Their current face data will be replaced at the next capture on the shop phone.`)) return
   const { error: err } = await supabase
     .from('attendance_employees')
     .update({ enroll_status: 'pending', face_embeddings: null })
@@ -200,7 +326,6 @@ async function toggleEmployee(emp: AttendanceEmployee) {
     .eq('id', emp.id)
   if (err) error.value = err.message
   await loadEmployees()
-  loadRailStats()
 }
 
 async function deleteEmployee(emp: AttendanceEmployee) {
@@ -224,132 +349,23 @@ async function deleteEmployee(emp: AttendanceEmployee) {
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to delete employee'
   }
-  await loadEmployees()
-  loadRailStats()
+  await refresh()
 }
 
-// ---------------- attendance ----------------
+// ---------------- devices drawer actions ----------------
 
-async function loadRecords() {
-  if (!selectedStoreId.value) return
-  loadingRecords.value = true
-  try {
-    let q = supabase
-      .from('attendance_records')
-      .select('id, employee_id, store_id, device_id, type, ts, match_score, photo_url, attendance_employees ( name )')
-      .eq('store_id', selectedStoreId.value)
-      .gte('ts', `${dateFrom.value}T00:00:00`)
-      .lte('ts', `${dateTo.value}T23:59:59`)
-      .order('ts', { ascending: false })
-    if (employeeFilter.value) q = q.eq('employee_id', employeeFilter.value)
-    const { data, error: err } = await q
-    if (err) throw err
-    records.value = (data ?? []) as unknown as AttendanceRecord[]
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load attendance'
-  } finally {
-    loadingRecords.value = false
-  }
+function openDrawer(d: Exclude<Drawer, null>) {
+  drawer.value = d
+  if (d === 'devices') loadDevices()
 }
 
-const peopleInRange = computed(() => {
-  const seen = new Set<string>()
-  for (const r of records.value) seen.add(r.employee_id)
-  return seen.size
-})
-
-// Pair scans into day-wise sessions: each IN opens a session, the next OUT
-// of the same employee on the same day closes it. Orphan OUTs get their own row.
-interface DaySession {
-  key: string
-  date: string
-  employeeId: string
-  name: string
-  inRec: AttendanceRecord | null
-  outRec: AttendanceRecord | null
-}
-
-const sessions = computed<DaySession[]>(() => {
-  const asc = [...records.value].sort((a, b) => a.ts.localeCompare(b.ts))
-  const open = new Map<string, DaySession>()
-  const list: DaySession[] = []
-  for (const r of asc) {
-    const date = r.ts.slice(0, 10)
-    const key = `${r.employee_id}|${date}`
-    const name = r.attendance_employees?.name ?? r.employee_id
-    if (r.type === 'in') {
-      const s: DaySession = {
-        key: `${key}|${r.id}`,
-        date,
-        employeeId: r.employee_id,
-        name,
-        inRec: r,
-        outRec: null,
-      }
-      list.push(s)
-      open.set(key, s)
-    } else {
-      const s = open.get(key)
-      if (s && !s.outRec) {
-        s.outRec = r
-        open.delete(key)
-      } else {
-        list.push({
-          key: `${key}|${r.id}`,
-          date,
-          employeeId: r.employee_id,
-          name,
-          inRec: null,
-          outRec: r,
-        })
-      }
-    }
-  }
-  return list.reverse()
-})
-
-const stillIn = computed(
-  () => sessions.value.filter((s) => isToday(s.date) && s.inRec && !s.outRec).length
-)
-
-function fmtTime(s: string | null | undefined): string {
-  if (!s) return '—'
-  try {
-    return format(parseISO(s), 'hh:mm a')
-  } catch {
-    return '—'
-  }
-}
-
-function fmtDay(s: string): string {
-  try {
-    return format(parseISO(s), 'dd MMM yyyy')
-  } catch {
-    return s
-  }
-}
-
-function sessionDuration(s: DaySession): string {
-  if (!s.inRec || !s.outRec) return '—'
-  const ms = new Date(s.outRec.ts).getTime() - new Date(s.inRec.ts).getTime()
-  if (ms <= 0) return '—'
-  const h = Math.floor(ms / 3_600_000)
-  const m = Math.round((ms % 3_600_000) / 60_000)
-  return h ? `${h}h ${m}m` : `${m}m`
-}
-
-function isToday(date: string): boolean {
-  return date === fmtDateInput(new Date())
-}
-
-// ---------------- devices ----------------
-
-async function loadAllDevices() {
+async function loadDevices() {
   loadingDevices.value = true
   try {
     const { data, error: err } = await supabase
       .from('attendance_devices')
       .select('id, store_id, name, activation_code, status, device_info, last_seen, activated_at')
+      .eq('store_id', selectedStoreId.value)
       .order('created_at', { ascending: false })
     if (err) throw err
     devices.value = (data ?? []) as AttendanceDevice[]
@@ -370,21 +386,22 @@ function genCode(): string {
   return code
 }
 
-async function createDevice(store: Store) {
-  creatingFor.value = store.id
+async function createDevice() {
+  if (!selectedStoreId.value) return
+  creatingDevice.value = true
   try {
     const { error: err } = await supabase.from('attendance_devices').insert({
-      store_id: store.id,
-      name: `${store.name ?? 'Shop'} phone`,
+      store_id: selectedStoreId.value,
+      name: `${selectedStore.value?.name ?? 'Shop'} phone`,
       activation_code: genCode(),
       status: 'unclaimed',
     })
     if (err) throw err
-    await loadAllDevices()
+    await loadDevices()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to create device'
   } finally {
-    creatingFor.value = null
+    creatingDevice.value = false
   }
 }
 
@@ -395,7 +412,6 @@ async function removeDevice(d: AttendanceDevice) {
       : 'Remove this phone? The app on it resets and can be added again with a new code. Attendance history stays.'
   if (!confirm(msg)) return
   try {
-    // Keep history: detach records from the device before deleting it.
     const { error: e1 } = await supabase
       .from('attendance_records')
       .update({ device_id: null })
@@ -409,7 +425,7 @@ async function removeDevice(d: AttendanceDevice) {
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to remove device'
   }
-  await loadAllDevices()
+  await loadDevices()
 }
 
 async function copyCode(code: string) {
@@ -429,39 +445,50 @@ function isOnline(d: AttendanceDevice): boolean {
 </script>
 
 <template>
-  <div class="p-4 md:p-6 space-y-5 max-w-7xl">
-    <!-- header -->
+  <div class="p-4 md:p-6 space-y-4 max-w-6xl">
+    <!-- ============ header: store · dates · panel icons ============ -->
     <div class="flex flex-wrap items-center gap-3">
-      <div class="mr-auto">
-        <h1 class="text-lg font-semibold leading-tight">Attendance</h1>
-        <p class="text-xs text-[var(--color-text-dim)]">
-          Face check-ins across all shops
-        </p>
+      <div class="flex items-center gap-2">
+        <StoreIcon :size="16" class="text-[var(--color-text-dim)]" />
+        <select v-model="selectedStoreId" class="input !w-52">
+          <option v-for="s in stores" :key="s.id" :value="s.id">
+            {{ s.name || s.id }}
+          </option>
+        </select>
       </div>
-      <button class="btn btn-ghost" @click="refresh">
-        <RefreshCw :size="15" />
-        <span class="hidden sm:inline">Refresh</span>
-      </button>
-    </div>
 
-    <!-- tabs -->
-    <div
-      class="inline-flex p-1 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]"
-    >
-      <button
-        v-for="t in [
-          { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
-          { id: 'employees', label: 'Employees', icon: Users },
-          { id: 'devices', label: 'Devices', icon: Smartphone },
-        ]"
-        :key="t.id"
-        class="tab-btn"
-        :class="{ active: tab === t.id }"
-        @click="tab = t.id as Tab"
-      >
-        <component :is="t.icon" :size="15" />
-        {{ t.label }}
-      </button>
+      <div class="flex items-center gap-1.5">
+        <button class="preset-chip" :class="{ active: preset === 'today' }" @click="setPreset('today')">
+          Today
+        </button>
+        <button class="preset-chip" :class="{ active: preset === 'yesterday' }" @click="setPreset('yesterday')">
+          Yesterday
+        </button>
+        <button class="preset-chip" :class="{ active: preset === 'custom' }" @click="setPreset('custom')">
+          Pick days
+        </button>
+      </div>
+
+      <div v-if="preset === 'custom'" class="flex items-center gap-2">
+        <input v-model="dateFrom" type="date" class="input date-input !w-38" />
+        <span class="text-[var(--color-text-dim)] text-sm">→</span>
+        <input v-model="dateTo" type="date" class="input date-input !w-38" />
+      </div>
+
+      <div class="ml-auto flex items-center gap-2">
+        <button class="btn btn-ghost !px-3" title="Members" @click="openDrawer('members')">
+          <Users :size="16" />
+          <span class="hidden sm:inline">Members</span>
+          <span class="count-badge">{{ employees.length }}</span>
+        </button>
+        <button class="btn btn-ghost !px-3" title="Devices" @click="openDrawer('devices')">
+          <Smartphone :size="16" />
+          <span class="hidden sm:inline">Devices</span>
+        </button>
+        <button class="btn btn-ghost !px-2.5" title="Refresh" @click="refresh">
+          <RefreshCw :size="15" />
+        </button>
+      </div>
     </div>
 
     <div
@@ -472,394 +499,327 @@ function isOnline(d: AttendanceDevice): boolean {
       {{ error }}
     </div>
 
-    <!-- ============ ATTENDANCE + EMPLOYEES: shop rail + content ============ -->
-    <div v-if="tab !== 'devices'" class="flex flex-col lg:flex-row gap-4 items-start">
-      <!-- shop rail -->
-      <aside class="w-full lg:w-64 shrink-0">
-        <p class="rail-label">Shops</p>
-        <div
-          class="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0"
-        >
-          <button
-            v-for="s in stores"
-            :key="s.id"
-            class="shop-item"
-            :class="{ active: selectedStoreId === s.id }"
-            @click="selectedStoreId = s.id"
-          >
-            <div class="flex items-center gap-2.5 min-w-0">
-              <div class="shop-icon">
-                <StoreIcon :size="15" />
-              </div>
-              <div class="min-w-0 text-left">
-                <p class="text-sm font-medium truncate">{{ s.name || s.id }}</p>
-                <p class="text-[11px] text-[var(--color-text-dim)] truncate">
-                  {{ railStats[s.id]?.employees ?? 0 }} employees
-                </p>
-              </div>
-            </div>
-            <span
-              v-if="railStats[s.id]?.present"
-              class="chip chip-success shrink-0 !text-[10px]"
-            >
-              {{ railStats[s.id].present }} in today
-            </span>
-          </button>
-        </div>
-      </aside>
-
-      <!-- content -->
-      <div class="flex-1 min-w-0 w-full space-y-4">
-        <!-- ============ ATTENDANCE ============ -->
-        <template v-if="tab === 'attendance'">
-          <!-- stat tiles -->
-          <div class="grid grid-cols-3 gap-3">
-            <div class="card p-3.5">
-              <p class="stat-label">People</p>
-              <p class="stat-value">{{ peopleInRange }}</p>
-            </div>
-            <div class="card p-3.5">
-              <p class="stat-label">Scans</p>
-              <p class="stat-value">{{ records.length }}</p>
-            </div>
-            <div class="card p-3.5">
-              <p class="stat-label">Still in</p>
-              <p class="stat-value text-green-400">{{ stillIn }}</p>
-            </div>
-          </div>
-
-          <!-- filters -->
-          <div class="card p-3 flex flex-wrap items-end gap-3">
-            <div>
-              <label class="filter-label">From</label>
-              <input v-model="dateFrom" type="date" class="input date-input !w-40" />
-            </div>
-            <div>
-              <label class="filter-label">To</label>
-              <input v-model="dateTo" type="date" class="input date-input !w-40" />
-            </div>
-            <div>
-              <label class="filter-label">Employee</label>
-              <select v-model="employeeFilter" class="input !w-44">
-                <option value="">All</option>
-                <option v-for="e in employees" :key="e.id" :value="e.id">
-                  {{ e.name }}
-                </option>
-              </select>
-            </div>
-            <div class="ml-auto flex rounded-lg border border-[var(--color-border)] overflow-hidden">
-              <button
-                class="px-3 py-1.5 text-xs"
-                :class="viewMode === 'days' ? 'bg-[var(--color-surface-2)] font-semibold' : 'text-[var(--color-text-dim)]'"
-                @click="viewMode = 'days'"
-              >
-                Day view
-              </button>
-              <button
-                class="px-3 py-1.5 text-xs"
-                :class="viewMode === 'scans' ? 'bg-[var(--color-surface-2)] font-semibold' : 'text-[var(--color-text-dim)]'"
-                @click="viewMode = 'scans'"
-              >
-                All scans
-              </button>
-            </div>
-          </div>
-
-          <div class="card overflow-hidden">
-            <div v-if="loadingRecords" class="p-8 text-center text-sm text-[var(--color-text-dim)]">
-              Loading…
-            </div>
-            <div v-else-if="!records.length" class="p-10 text-center text-[var(--color-text-dim)]">
-              <Inbox :size="28" class="mx-auto mb-2 opacity-60" />
-              No scans for {{ selectedStore?.name || 'this shop' }} in this period.
-            </div>
-
-            <!-- Day view -->
-            <div v-else-if="viewMode === 'days'" class="overflow-x-auto">
-              <table class="w-full text-sm">
-                <thead>
-                  <tr class="thead-row">
-                    <th class="th">Employee</th>
-                    <th class="th">Date</th>
-                    <th class="th">IN</th>
-                    <th class="th">OUT</th>
-                    <th class="th hidden md:table-cell">Hours</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="s in sessions" :key="s.key" class="body-row">
-                    <td class="td font-medium">{{ s.name }}</td>
-                    <td class="td tabular-nums text-[var(--color-text-muted)]">
-                      {{ fmtDay(s.date) }}
-                    </td>
-                    <td class="td">
-                      <div v-if="s.inRec" class="flex items-center gap-2">
-                        <img
-                          v-if="s.inRec.photo_url"
-                          :src="s.inRec.photo_url"
-                          class="thumb"
-                          @click="photoPreview = s.inRec.photo_url"
-                        />
-                        <span class="tabular-nums text-green-400">{{ fmtTime(s.inRec.ts) }}</span>
-                      </div>
-                      <span v-else class="text-[var(--color-text-dim)]">—</span>
-                    </td>
-                    <td class="td">
-                      <div v-if="s.outRec" class="flex items-center gap-2">
-                        <img
-                          v-if="s.outRec.photo_url"
-                          :src="s.outRec.photo_url"
-                          class="thumb"
-                          @click="photoPreview = s.outRec.photo_url"
-                        />
-                        <span class="tabular-nums text-amber-400">{{ fmtTime(s.outRec.ts) }}</span>
-                      </div>
-                      <span v-else-if="isToday(s.date)" class="chip chip-success">
-                        <Clock :size="11" />
-                        Still in
-                      </span>
-                      <span v-else class="text-[var(--color-text-dim)]">—</span>
-                    </td>
-                    <td class="td hidden md:table-cell tabular-nums text-[var(--color-text-muted)]">
-                      {{ sessionDuration(s) }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <!-- All scans -->
-            <div v-else class="overflow-x-auto">
-              <table class="w-full text-sm">
-                <thead>
-                  <tr class="thead-row">
-                    <th class="th">Employee</th>
-                    <th class="th">Type</th>
-                    <th class="th">Time</th>
-                    <th class="th hidden md:table-cell">Match</th>
-                    <th class="th">Photo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="r in records" :key="r.id" class="body-row">
-                    <td class="td font-medium">
-                      {{ r.attendance_employees?.name ?? r.employee_id }}
-                    </td>
-                    <td class="td">
-                      <span class="chip" :class="r.type === 'in' ? 'chip-success' : 'chip-warn'">
-                        <LogIn v-if="r.type === 'in'" :size="11" />
-                        <LogOut v-else :size="11" />
-                        {{ r.type.toUpperCase() }}
-                      </span>
-                    </td>
-                    <td class="td tabular-nums">{{ fmtDate(r.ts) }}</td>
-                    <td class="td hidden md:table-cell text-[var(--color-text-dim)]">
-                      {{ r.match_score != null ? Math.round(Number(r.match_score) * 100) + '%' : '—' }}
-                    </td>
-                    <td class="td">
-                      <img
-                        v-if="r.photo_url"
-                        :src="r.photo_url"
-                        class="thumb"
-                        @click="photoPreview = r.photo_url"
-                      />
-                      <span v-else class="text-[var(--color-text-dim)]">—</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </template>
-
-        <!-- ============ EMPLOYEES ============ -->
-        <template v-else>
-          <div class="card p-3 flex flex-wrap items-center gap-2">
-            <input
-              v-model="newName"
-              class="input !w-64"
-              :placeholder="`New employee at ${selectedStore?.name || 'shop'}`"
-              @keyup.enter="addEmployee"
-            />
-            <button class="btn btn-primary" :disabled="addingEmployee || !newName.trim()" @click="addEmployee">
-              <Plus :size="15" />
-              Add
-            </button>
-            <p class="text-xs text-[var(--color-text-dim)] w-full md:w-auto md:ml-2">
-              After adding, the shop phone shows a popup for this person to scan their face.
-            </p>
-          </div>
-
-          <div class="card overflow-hidden">
-            <div v-if="loadingEmployees" class="p-8 text-center text-sm text-[var(--color-text-dim)]">
-              Loading…
-            </div>
-            <div v-else-if="!employees.length" class="p-10 text-center text-[var(--color-text-dim)]">
-              <Users :size="28" class="mx-auto mb-2 opacity-60" />
-              No employees at {{ selectedStore?.name || 'this shop' }} yet — add the first one above.
-            </div>
-            <div v-else class="overflow-x-auto">
-              <table class="w-full text-sm">
-                <thead>
-                  <tr class="thead-row">
-                    <th class="th">Employee</th>
-                    <th class="th">Face</th>
-                    <th class="th">Status</th>
-                    <th class="th text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="e in employees" :key="e.id" class="body-row">
-                    <td class="td">
-                      <div class="flex items-center gap-3">
-                        <img
-                          v-if="e.photo_url"
-                          :src="e.photo_url"
-                          class="h-9 w-9 rounded-full object-cover border border-[var(--color-border)] cursor-pointer"
-                          @click="photoPreview = e.photo_url"
-                        />
-                        <div
-                          v-else
-                          class="h-9 w-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-xs font-semibold"
-                        >
-                          {{ e.name.charAt(0).toUpperCase() }}
-                        </div>
-                        <span class="font-medium">{{ e.name }}</span>
-                      </div>
-                    </td>
-                    <td class="td">
-                      <span class="chip" :class="e.enroll_status === 'enrolled' ? 'chip-success' : 'chip-warn'">
-                        <ScanFace :size="11" />
-                        {{ e.enroll_status === 'enrolled' ? 'Enrolled' : 'Waiting for scan' }}
-                      </span>
-                    </td>
-                    <td class="td">
-                      <span class="chip" :class="e.status === 'active' ? 'chip-success' : 'chip-danger'">
-                        {{ e.status === 'active' ? 'Active' : 'Disabled' }}
-                      </span>
-                    </td>
-                    <td class="td">
-                      <div class="flex justify-end gap-2">
-                        <button
-                          v-if="e.enroll_status === 'enrolled'"
-                          class="btn btn-ghost !py-1.5 !px-2.5 text-xs"
-                          @click="reEnroll(e)"
-                        >
-                          <ScanFace :size="13" />
-                          Re-enroll
-                        </button>
-                        <button class="btn btn-ghost !py-1.5 !px-2.5 text-xs" @click="toggleEmployee(e)">
-                          <UserX v-if="e.status === 'active'" :size="13" />
-                          <UserCheck v-else :size="13" />
-                          {{ e.status === 'active' ? 'Disable' : 'Enable' }}
-                        </button>
-                        <button
-                          class="btn btn-ghost !py-1.5 !px-2.5 text-xs !text-red-400 hover:!border-red-500/50"
-                          @click="deleteEmployee(e)"
-                        >
-                          <Trash2 :size="13" />
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </template>
+    <!-- ============ stat tiles ============ -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="card p-3.5">
+        <p class="stat-label">Employees</p>
+        <p class="stat-value">{{ employees.filter((e) => e.status === 'active').length }}</p>
+      </div>
+      <div class="card p-3.5">
+        <p class="stat-label">Present</p>
+        <p class="stat-value text-green-400">{{ presentCount }}</p>
+      </div>
+      <div class="card p-3.5">
+        <p class="stat-label">Leaves</p>
+        <p class="stat-value text-amber-400">{{ totalLeaves }}</p>
+      </div>
+      <div class="card p-3.5">
+        <p class="stat-label">Still in</p>
+        <p class="stat-value text-sky-400">{{ stillIn }}</p>
       </div>
     </div>
 
-    <!-- ============ DEVICES: all shops, grouped ============ -->
-    <div v-else class="space-y-4">
-      <div v-if="loadingDevices && !devices.length" class="card p-8 text-center text-sm text-[var(--color-text-dim)]">
+    <!-- ============ per-employee table ============ -->
+    <div class="card overflow-hidden">
+      <div v-if="loading" class="p-8 text-center text-sm text-[var(--color-text-dim)]">
         Loading…
       </div>
-      <div v-for="s in stores" :key="s.id" class="card overflow-hidden">
-        <div class="flex items-center gap-3 px-4 py-3 border-b border-[var(--color-border)]">
-          <div class="shop-icon">
-            <StoreIcon :size="15" />
-          </div>
-          <div class="mr-auto min-w-0">
-            <p class="text-sm font-semibold truncate">{{ s.name || s.id }}</p>
-            <p class="text-[11px] text-[var(--color-text-dim)]">
-              {{ (devicesByStore[s.id] ?? []).length }}
-              {{ (devicesByStore[s.id] ?? []).length === 1 ? 'device' : 'devices' }}
-            </p>
-          </div>
-          <button
-            class="btn btn-ghost !py-1.5 !px-3 text-xs"
-            :disabled="creatingFor === s.id"
-            @click="createDevice(s)"
-          >
-            <Plus :size="13" />
-            New code
+      <div v-else-if="!employees.length" class="p-10 text-center text-[var(--color-text-dim)]">
+        <Users :size="28" class="mx-auto mb-2 opacity-60" />
+        No employees at {{ selectedStore?.name || 'this shop' }} yet — add them from Members (top right).
+      </div>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="thead-row">
+              <th class="th">Employee</th>
+              <th class="th">Present</th>
+              <th class="th">Leaves</th>
+              <th v-if="singleDay" class="th">IN</th>
+              <th v-if="singleDay" class="th">OUT</th>
+              <th v-if="singleDay" class="th hidden md:table-cell">Hours</th>
+              <th class="th w-10"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="s in summaries" :key="s.emp.id">
+              <tr
+                class="body-row cursor-pointer"
+                :class="{ 'opacity-50': s.emp.status !== 'active' }"
+                @click="expanded[s.emp.id] = !expanded[s.emp.id]"
+              >
+                <td class="td">
+                  <div class="flex items-center gap-3">
+                    <img
+                      v-if="s.emp.photo_url"
+                      :src="s.emp.photo_url"
+                      class="h-9 w-9 rounded-full object-cover border border-[var(--color-border)]"
+                      @click.stop="photoPreview = s.emp.photo_url"
+                    />
+                    <div
+                      v-else
+                      class="h-9 w-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-xs font-semibold"
+                    >
+                      {{ s.emp.name.charAt(0).toUpperCase() }}
+                    </div>
+                    <div class="min-w-0">
+                      <p class="font-medium truncate">{{ s.emp.name }}</p>
+                      <p v-if="s.emp.enroll_status !== 'enrolled'" class="text-[11px] text-amber-400">
+                        Waiting for face scan
+                      </p>
+                      <p v-else-if="s.emp.status !== 'active'" class="text-[11px] text-red-400">
+                        Disabled
+                      </p>
+                    </div>
+                  </div>
+                </td>
+                <td class="td tabular-nums">
+                  <span :class="s.daysPresent ? 'text-green-400' : 'text-[var(--color-text-dim)]'">
+                    {{ s.daysPresent }}<span v-if="!singleDay" class="text-[var(--color-text-dim)]"> / {{ s.totalDays }}</span>
+                  </span>
+                </td>
+                <td class="td tabular-nums">
+                  <span :class="s.leaves ? 'text-amber-400' : 'text-[var(--color-text-dim)]'">{{ s.leaves }}</span>
+                </td>
+                <td v-if="singleDay" class="td">
+                  <div v-if="s.firstIn" class="flex items-center gap-2">
+                    <img
+                      v-if="s.firstIn.photo_url"
+                      :src="s.firstIn.photo_url"
+                      class="thumb"
+                      @click.stop="photoPreview = s.firstIn.photo_url"
+                    />
+                    <span class="tabular-nums text-green-400">{{ fmtTime(s.firstIn.ts) }}</span>
+                  </div>
+                  <span v-else class="text-[var(--color-text-dim)]">—</span>
+                </td>
+                <td v-if="singleDay" class="td">
+                  <div v-if="s.lastOut" class="flex items-center gap-2">
+                    <img
+                      v-if="s.lastOut.photo_url"
+                      :src="s.lastOut.photo_url"
+                      class="thumb"
+                      @click.stop="photoPreview = s.lastOut.photo_url"
+                    />
+                    <span class="tabular-nums text-amber-400">{{ fmtTime(s.lastOut.ts) }}</span>
+                  </div>
+                  <span v-else-if="s.firstIn && isToday(dateFrom)" class="chip chip-success">
+                    <Clock :size="11" />
+                    Still in
+                  </span>
+                  <span v-else class="text-[var(--color-text-dim)]">—</span>
+                </td>
+                <td v-if="singleDay" class="td hidden md:table-cell tabular-nums text-[var(--color-text-muted)]">
+                  {{ s.hours }}
+                </td>
+                <td class="td text-right text-[var(--color-text-dim)]">
+                  <ChevronDown v-if="expanded[s.emp.id]" :size="16" />
+                  <ChevronRight v-else :size="16" />
+                </td>
+              </tr>
+
+              <!-- expanded: every day, every session, with photos -->
+              <tr v-if="expanded[s.emp.id]" class="body-row">
+                <td :colspan="singleDay ? 7 : 4" class="!p-0 bg-[var(--color-surface-2)]/30">
+                  <div v-if="!s.days.length" class="px-6 py-4 text-sm text-[var(--color-text-dim)]">
+                    No attendance in this period.
+                  </div>
+                  <table v-else class="w-full text-sm">
+                    <tbody>
+                      <template v-for="d in s.days" :key="d.date">
+                        <tr
+                          v-for="(sess, i) in d.sessions"
+                          :key="d.date + i"
+                          class="border-b border-[var(--color-border)]/60 last:border-0"
+                        >
+                          <td class="px-6 py-2 w-36 tabular-nums text-[var(--color-text-muted)]">
+                            {{ i === 0 ? fmtDay(d.date) : '' }}
+                          </td>
+                          <td class="px-4 py-2">
+                            <div v-if="sess.inRec" class="flex items-center gap-2">
+                              <img
+                                v-if="sess.inRec.photo_url"
+                                :src="sess.inRec.photo_url"
+                                class="thumb"
+                                @click="photoPreview = sess.inRec.photo_url"
+                              />
+                              <span class="tabular-nums text-green-400">IN {{ fmtTime(sess.inRec.ts) }}</span>
+                            </div>
+                            <span v-else class="text-[var(--color-text-dim)]">—</span>
+                          </td>
+                          <td class="px-4 py-2">
+                            <div v-if="sess.outRec" class="flex items-center gap-2">
+                              <img
+                                v-if="sess.outRec.photo_url"
+                                :src="sess.outRec.photo_url"
+                                class="thumb"
+                                @click="photoPreview = sess.outRec.photo_url"
+                              />
+                              <span class="tabular-nums text-amber-400">OUT {{ fmtTime(sess.outRec.ts) }}</span>
+                            </div>
+                            <span v-else-if="isToday(d.date)" class="chip chip-success">
+                              <Clock :size="11" />
+                              Still in
+                            </span>
+                            <span v-else class="text-[var(--color-text-dim)]">no out</span>
+                          </td>
+                          <td class="px-4 py-2 w-24 text-right tabular-nums text-[var(--color-text-muted)]">
+                            {{ i === d.sessions.length - 1 ? dayHours(d) : '' }}
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ MEMBERS drawer ============ -->
+    <div v-if="drawer" class="fixed inset-0 z-40">
+      <div class="absolute inset-0 bg-black/60" @click="drawer = null" />
+      <div
+        class="absolute right-0 top-0 h-full w-full max-w-md bg-[var(--color-bg)] border-l border-[var(--color-border)] overflow-y-auto"
+      >
+        <div
+          class="sticky top-0 z-10 flex items-center gap-2 px-4 h-14 border-b border-[var(--color-border)] bg-[var(--color-bg)]/95 backdrop-blur"
+        >
+          <component :is="drawer === 'members' ? Users : Smartphone" :size="17" />
+          <h2 class="font-semibold mr-auto">
+            {{ drawer === 'members' ? 'Members' : 'Devices' }} · {{ selectedStore?.name }}
+          </h2>
+          <button class="btn btn-ghost !p-2" @click="drawer = null">
+            <X :size="16" />
           </button>
         </div>
 
-        <div
-          v-if="!(devicesByStore[s.id] ?? []).length"
-          class="px-4 py-5 text-sm text-[var(--color-text-dim)]"
-        >
-          No phone yet — generate a code and enter it in the app on this shop's phone.
-        </div>
-        <div v-else class="divide-y divide-[var(--color-border)]">
+        <!-- members -->
+        <div v-if="drawer === 'members'" class="p-4 space-y-3">
+          <div class="flex gap-2">
+            <input
+              v-model="newName"
+              class="input"
+              placeholder="Employee name"
+              @keyup.enter="addEmployee"
+            />
+            <button class="btn btn-primary shrink-0" :disabled="addingEmployee || !newName.trim()" @click="addEmployee">
+              <Plus :size="15" />
+              Add
+            </button>
+          </div>
+          <p class="text-xs text-[var(--color-text-dim)]">
+            After adding, the shop phone shows an ADD popup for this person's face.
+          </p>
+
           <div
-            v-for="d in devicesByStore[s.id]"
-            :key="d.id"
-            class="flex flex-wrap items-center gap-3 px-4 py-3"
+            v-for="e in employees"
+            :key="e.id"
+            class="card p-3 flex items-center gap-3"
           >
+            <img
+              v-if="e.photo_url"
+              :src="e.photo_url"
+              class="h-10 w-10 rounded-full object-cover border border-[var(--color-border)] cursor-pointer"
+              @click="photoPreview = e.photo_url"
+            />
             <div
-              class="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
+              v-else
+              class="h-10 w-10 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-sm font-semibold"
+            >
+              {{ e.name.charAt(0).toUpperCase() }}
+            </div>
+            <div class="min-w-0 mr-auto">
+              <p class="font-medium text-sm truncate">{{ e.name }}</p>
+              <span class="chip mt-0.5" :class="e.enroll_status === 'enrolled' ? 'chip-success' : 'chip-warn'">
+                <ScanFace :size="10" />
+                {{ e.enroll_status === 'enrolled' ? 'Enrolled' : 'Waiting for scan' }}
+              </span>
+            </div>
+            <div class="flex flex-col gap-1.5 items-end">
+              <div class="flex gap-1.5">
+                <button
+                  v-if="e.enroll_status === 'enrolled'"
+                  class="icon-action"
+                  title="Re-enroll face"
+                  @click="reEnroll(e)"
+                >
+                  <ScanFace :size="14" />
+                </button>
+                <button
+                  class="icon-action"
+                  :title="e.status === 'active' ? 'Disable' : 'Enable'"
+                  @click="toggleEmployee(e)"
+                >
+                  <UserX v-if="e.status === 'active'" :size="14" />
+                  <UserCheck v-else :size="14" />
+                </button>
+                <button
+                  class="icon-action danger"
+                  title="Delete permanently"
+                  @click="deleteEmployee(e)"
+                >
+                  <Trash2 :size="14" />
+                </button>
+              </div>
+              <span v-if="e.status !== 'active'" class="chip chip-danger">Disabled</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- devices -->
+        <div v-else class="p-4 space-y-3">
+          <button class="btn btn-primary w-full" :disabled="creatingDevice" @click="createDevice">
+            <Plus :size="15" />
+            New activation code
+          </button>
+          <p class="text-xs text-[var(--color-text-dim)]">
+            Enter the code once in the app on this shop's phone. One code = one phone.
+          </p>
+
+          <div v-if="loadingDevices" class="p-6 text-center text-sm text-[var(--color-text-dim)]">
+            Loading…
+          </div>
+          <div v-else-if="!devices.length" class="p-6 text-center text-sm text-[var(--color-text-dim)]">
+            <Inbox :size="24" class="mx-auto mb-2 opacity-60" />
+            No phone for this shop yet.
+          </div>
+
+          <div v-for="d in devices" :key="d.id" class="card p-3 flex items-center gap-3">
+            <div
+              class="h-10 w-10 rounded-lg flex items-center justify-center shrink-0"
               :class="isOnline(d) ? 'bg-green-500/10 text-green-400' : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)]'"
             >
-              <Smartphone :size="16" />
+              <Smartphone :size="17" />
             </div>
             <div class="min-w-0 mr-auto">
               <p class="text-sm font-medium truncate">{{ d.name || 'Shop phone' }}</p>
               <p class="text-[11px] text-[var(--color-text-dim)] truncate">
                 {{ d.device_info || 'Not activated yet' }}
-                <template v-if="d.last_seen"> · last seen {{ fmtDate(d.last_seen) }}</template>
               </p>
+              <button
+                v-if="d.status === 'unclaimed' && d.activation_code"
+                class="chip font-mono mt-1 cursor-pointer hover:border-[var(--color-accent)]"
+                @click="copyCode(d.activation_code)"
+              >
+                {{ d.activation_code }}
+                <CheckCircle2 v-if="copiedCode === d.activation_code" :size="11" class="text-green-400" />
+                <Copy v-else :size="11" />
+              </button>
             </div>
-
-            <button
-              v-if="d.status === 'unclaimed' && d.activation_code"
-              class="chip font-mono text-sm cursor-pointer hover:border-[var(--color-accent)]"
-              @click="copyCode(d.activation_code)"
-            >
-              {{ d.activation_code }}
-              <CheckCircle2 v-if="copiedCode === d.activation_code" :size="12" class="text-green-400" />
-              <Copy v-else :size="12" />
-            </button>
-
-            <span
-              class="chip"
-              :class="
-                d.status === 'unclaimed'
-                  ? 'chip-warn'
-                  : isOnline(d)
-                    ? 'chip-success'
-                    : ''
-              "
-            >
-              {{
-                d.status === 'unclaimed'
-                  ? 'Waiting for activation'
-                  : isOnline(d)
-                    ? 'Online'
-                    : 'Offline'
-              }}
-            </span>
-
-            <button
-              class="btn btn-ghost !py-1.5 !px-2.5 text-xs !text-red-400 hover:!border-red-500/50"
-              @click="removeDevice(d)"
-            >
-              <Trash2 :size="13" />
-              Remove
-            </button>
+            <div class="flex flex-col items-end gap-1.5">
+              <span
+                class="chip"
+                :class="d.status === 'unclaimed' ? 'chip-warn' : isOnline(d) ? 'chip-success' : ''"
+              >
+                {{ d.status === 'unclaimed' ? 'Waiting' : isOnline(d) ? 'Online' : 'Offline' }}
+              </span>
+              <button class="icon-action danger" title="Remove device" @click="removeDevice(d)">
+                <Trash2 :size="14" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -873,88 +833,44 @@ function isOnline(d: AttendanceDevice): boolean {
     >
       <img :src="photoPreview" class="max-h-full max-w-full rounded-lg" />
     </div>
-
   </div>
 </template>
 
 <style scoped>
-.tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.45rem 0.9rem;
-  border-radius: 0.6rem;
+.preset-chip {
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--color-text-muted);
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-.tab-btn:hover {
-  color: var(--color-text);
-}
-.tab-btn.active {
-  background: linear-gradient(
-    180deg,
-    rgba(170, 59, 255, 0.22),
-    rgba(170, 59, 255, 0.08)
-  );
-  color: #fff;
-  border: 1px solid rgba(170, 59, 255, 0.35);
-  padding: calc(0.45rem - 1px) calc(0.9rem - 1px);
-}
-
-.rail-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-dim);
-  margin-bottom: 0.5rem;
-  padding-left: 0.25rem;
-}
-.shop-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  min-width: 200px;
-  padding: 0.6rem 0.7rem;
-  border-radius: 0.7rem;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   transition:
     border-color 0.15s,
-    background 0.15s;
-  cursor: pointer;
+    background 0.15s,
+    color 0.15s;
 }
-.shop-item:hover {
+.preset-chip:hover {
   background: var(--color-surface-2);
 }
-.shop-item.active {
+.preset-chip.active {
   border-color: rgba(170, 59, 255, 0.5);
   background: linear-gradient(
     180deg,
-    rgba(170, 59, 255, 0.14),
-    rgba(170, 59, 255, 0.04)
+    rgba(170, 59, 255, 0.18),
+    rgba(170, 59, 255, 0.06)
   );
+  color: #fff;
 }
-.shop-icon {
-  height: 2rem;
-  width: 2rem;
-  border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+
+.count-badge {
+  font-size: 0.6875rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
   background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
   color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-.shop-item.active .shop-icon {
-  background: rgba(170, 59, 255, 0.2);
-  color: #d8a5ff;
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-label {
@@ -969,12 +885,6 @@ function isOnline(d: AttendanceDevice): boolean {
   font-weight: 700;
   line-height: 1.3;
   font-variant-numeric: tabular-nums;
-}
-.filter-label {
-  display: block;
-  font-size: 0.6875rem;
-  color: var(--color-text-dim);
-  margin-bottom: 0.25rem;
 }
 
 .thead-row {
@@ -995,9 +905,6 @@ function isOnline(d: AttendanceDevice): boolean {
 .body-row:last-child {
   border-bottom: none;
 }
-.body-row:hover {
-  background: color-mix(in srgb, var(--color-surface-2) 50%, transparent);
-}
 .td {
   padding: 0.625rem 1rem;
 }
@@ -1010,4 +917,29 @@ function isOnline(d: AttendanceDevice): boolean {
   border: 1px solid var(--color-border);
 }
 
+.icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.9rem;
+  width: 1.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.icon-action:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+.icon-action.danger {
+  color: #f87171;
+}
+.icon-action.danger:hover {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.08);
+}
 </style>
