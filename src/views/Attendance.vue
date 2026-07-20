@@ -13,7 +13,6 @@ import {
   Trash2,
   CheckCircle2,
   AlertCircle,
-  Inbox,
   Clock,
   ChevronDown,
   ChevronRight,
@@ -56,7 +55,6 @@ const addingEmployee = ref(false)
 // devices drawer
 const devices = ref<AttendanceDevice[]>([])
 const loadingDevices = ref(false)
-const creatingDevice = ref(false)
 const copiedCode = ref<string | null>(null)
 
 const selectedStore = computed(() =>
@@ -362,10 +360,10 @@ function openDrawer(d: Exclude<Drawer, null>) {
 async function loadDevices() {
   loadingDevices.value = true
   try {
+    // All shops at once — the drawer groups them per store.
     const { data, error: err } = await supabase
       .from('attendance_devices')
-      .select('id, store_id, name, activation_code, status, device_info, last_seen, activated_at')
-      .eq('store_id', selectedStoreId.value)
+      .select('id, store_id, name, activation_code, status, device_info, last_seen, activated_at, app_version')
       .order('created_at', { ascending: false })
     if (err) throw err
     devices.value = (data ?? []) as AttendanceDevice[]
@@ -375,6 +373,14 @@ async function loadDevices() {
     loadingDevices.value = false
   }
 }
+
+const devicesByStore = computed(() => {
+  const map: Record<string, AttendanceDevice[]> = {}
+  for (const d of devices.value) {
+    ;(map[d.store_id] ??= []).push(d)
+  }
+  return map
+})
 
 function genCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -386,13 +392,14 @@ function genCode(): string {
   return code
 }
 
-async function createDevice() {
-  if (!selectedStoreId.value) return
-  creatingDevice.value = true
+const creatingFor = ref<string | null>(null)
+
+async function createDevice(store: Store) {
+  creatingFor.value = store.id
   try {
     const { error: err } = await supabase.from('attendance_devices').insert({
-      store_id: selectedStoreId.value,
-      name: `${selectedStore.value?.name ?? 'Shop'} phone`,
+      store_id: store.id,
+      name: `${store.name ?? 'Shop'} phone`,
       activation_code: genCode(),
       status: 'unclaimed',
     })
@@ -401,7 +408,7 @@ async function createDevice() {
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to create device'
   } finally {
-    creatingDevice.value = false
+    creatingFor.value = null
   }
 }
 
@@ -689,7 +696,7 @@ function isOnline(d: AttendanceDevice): boolean {
         >
           <component :is="drawer === 'members' ? Users : Smartphone" :size="17" />
           <h2 class="font-semibold mr-auto">
-            {{ drawer === 'members' ? 'Members' : 'Devices' }} · {{ selectedStore?.name }}
+            {{ drawer === 'members' ? `Members · ${selectedStore?.name}` : 'Devices · All shops' }}
           </h2>
           <button class="btn btn-ghost !p-2" @click="drawer = null">
             <X :size="16" />
@@ -769,47 +776,60 @@ function isOnline(d: AttendanceDevice): boolean {
           </div>
         </div>
 
-        <!-- devices -->
-        <div v-else class="p-4 space-y-3">
-          <button class="btn btn-primary w-full" :disabled="creatingDevice" @click="createDevice">
-            <Plus :size="15" />
-            New activation code
-          </button>
-          <p class="text-xs text-[var(--color-text-dim)]">
-            Enter the code once in the app on this shop's phone. One code = one phone.
-          </p>
-
+        <!-- devices: every shop, grouped -->
+        <div v-else class="p-4 space-y-4">
           <div v-if="loadingDevices" class="p-6 text-center text-sm text-[var(--color-text-dim)]">
             Loading…
           </div>
-          <div v-else-if="!devices.length" class="p-6 text-center text-sm text-[var(--color-text-dim)]">
-            <Inbox :size="24" class="mx-auto mb-2 opacity-60" />
-            No phone for this shop yet.
-          </div>
 
-          <div v-for="d in devices" :key="d.id" class="card p-3 flex items-center gap-3">
-            <div
-              class="h-10 w-10 rounded-lg flex items-center justify-center shrink-0"
-              :class="isOnline(d) ? 'bg-green-500/10 text-green-400' : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)]'"
-            >
-              <Smartphone :size="17" />
-            </div>
-            <div class="min-w-0 mr-auto">
-              <p class="text-sm font-medium truncate">{{ d.name || 'Shop phone' }}</p>
-              <p class="text-[11px] text-[var(--color-text-dim)] truncate">
-                {{ d.device_info || 'Not activated yet' }}
-              </p>
+          <div v-for="s in stores" v-else :key="s.id" class="card overflow-hidden">
+            <div class="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--color-border)]">
+              <StoreIcon :size="14" class="text-[var(--color-text-dim)]" />
+              <p class="text-sm font-semibold mr-auto truncate">{{ s.name || s.id }}</p>
               <button
-                v-if="d.status === 'unclaimed' && d.activation_code"
-                class="chip font-mono mt-1 cursor-pointer hover:border-[var(--color-accent)]"
-                @click="copyCode(d.activation_code)"
+                class="btn btn-ghost !py-1 !px-2.5 text-xs"
+                :disabled="creatingFor === s.id"
+                @click="createDevice(s)"
               >
-                {{ d.activation_code }}
-                <CheckCircle2 v-if="copiedCode === d.activation_code" :size="11" class="text-green-400" />
-                <Copy v-else :size="11" />
+                <Plus :size="12" />
+                New code
               </button>
             </div>
-            <div class="flex flex-col items-end gap-1.5">
+
+            <p
+              v-if="!(devicesByStore[s.id] ?? []).length"
+              class="px-3 py-3 text-xs text-[var(--color-text-dim)]"
+            >
+              No phone yet — generate a code and enter it in the app.
+            </p>
+            <div
+              v-for="d in devicesByStore[s.id] ?? []"
+              v-else
+              :key="d.id"
+              class="flex items-center gap-3 px-3 py-2.5 border-b border-[var(--color-border)] last:border-0"
+            >
+              <div
+                class="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
+                :class="isOnline(d) ? 'bg-green-500/10 text-green-400' : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)]'"
+              >
+                <Smartphone :size="15" />
+              </div>
+              <div class="min-w-0 mr-auto">
+                <p class="text-[11px] text-[var(--color-text-dim)] truncate">
+                  {{ d.device_info || 'Not activated yet' }}
+                  <template v-if="d.app_version"> · v{{ d.app_version }}</template>
+                  <template v-if="d.last_seen"> · {{ fmtTime(d.last_seen) }}</template>
+                </p>
+                <button
+                  v-if="d.status === 'unclaimed' && d.activation_code"
+                  class="chip font-mono mt-1 cursor-pointer hover:border-[var(--color-accent)]"
+                  @click="copyCode(d.activation_code)"
+                >
+                  {{ d.activation_code }}
+                  <CheckCircle2 v-if="copiedCode === d.activation_code" :size="11" class="text-green-400" />
+                  <Copy v-else :size="11" />
+                </button>
+              </div>
               <span
                 class="chip"
                 :class="d.status === 'unclaimed' ? 'chip-warn' : isOnline(d) ? 'chip-success' : ''"

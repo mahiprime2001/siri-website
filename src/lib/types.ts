@@ -73,6 +73,7 @@ export interface AttendanceDevice {
   device_info: string | null
   last_seen: string | null
   activated_at: string | null
+  app_version: string | null
 }
 
 export interface Bill {
