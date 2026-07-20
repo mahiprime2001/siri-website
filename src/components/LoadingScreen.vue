@@ -58,23 +58,21 @@ onMounted(() => {
   <div
     class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[var(--color-bg)]"
   >
-    <div class="aurora" aria-hidden="true"></div>
-
     <div class="relative flex items-center justify-center w-40 h-40">
       <span
         ref="ring1"
-        class="absolute inset-0 rounded-full border border-[rgba(170,59,255,0.5)]"
+        class="absolute inset-0 rounded-full border border-[rgba(79,70,229,0.45)]"
       ></span>
       <span
         ref="ring2"
-        class="absolute inset-0 rounded-full border border-[rgba(170,59,255,0.35)]"
+        class="absolute inset-0 rounded-full border border-[rgba(79,70,229,0.3)]"
       ></span>
       <span
         ref="ring3"
-        class="absolute inset-0 rounded-full border border-[rgba(170,59,255,0.2)]"
+        class="absolute inset-0 rounded-full border border-[rgba(79,70,229,0.18)]"
       ></span>
       <div
-        class="relative h-24 w-24 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[0_20px_60px_-20px_rgba(170,59,255,0.6)] flex items-center justify-center overflow-hidden"
+        class="relative h-24 w-24 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center overflow-hidden"
       >
         <img
           ref="logo"

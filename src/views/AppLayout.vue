@@ -15,7 +15,7 @@ function handleLogout() {
 <template>
   <div class="relative z-10 flex min-h-screen">
     <aside
-      class="hidden md:flex w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]/60 backdrop-blur-md"
+      class="hidden md:flex w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]"
     >
       <div
         class="flex items-center gap-3 px-5 h-16 border-b border-[var(--color-border)]"
@@ -32,7 +32,7 @@ function handleLogout() {
       <div class="p-3 border-b border-[var(--color-border)]">
         <div class="flex items-center gap-3 px-2 py-2">
           <div
-            class="h-9 w-9 rounded-full bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] flex items-center justify-center text-sm font-semibold"
+            class="h-9 w-9 rounded-full bg-[var(--color-accent)] text-white flex items-center justify-center text-sm font-semibold"
           >
             {{ (user?.name || user?.email || '?').charAt(0).toUpperCase() }}
           </div>
@@ -71,7 +71,7 @@ function handleLogout() {
 
     <main class="flex-1 min-w-0">
       <header
-        class="md:hidden sticky top-0 z-30 flex items-center justify-between gap-3 px-4 h-14 border-b border-[var(--color-border)] bg-[var(--color-bg)]/85 backdrop-blur-md"
+        class="md:hidden sticky top-0 z-30 flex items-center justify-between gap-3 px-4 h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)]"
       >
         <div class="flex items-center gap-2 min-w-0">
           <img src="/Logo.png" alt="Siri" class="h-7 w-7 rounded-md shrink-0" />
@@ -82,7 +82,7 @@ function handleLogout() {
             class="flex items-center gap-2 pl-1.5 pr-2 py-1 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)]"
           >
             <div
-              class="h-6 w-6 rounded-full bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] flex items-center justify-center text-[11px] font-semibold"
+              class="h-6 w-6 rounded-full bg-[var(--color-accent)] text-white flex items-center justify-center text-[11px] font-semibold"
             >
               {{ (user?.name || user?.email || '?').charAt(0).toUpperCase() }}
             </div>
@@ -100,7 +100,7 @@ function handleLogout() {
         </div>
       </header>
       <nav
-        class="md:hidden flex gap-1 px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg)]/85"
+        class="md:hidden flex gap-1 px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)]"
       >
         <router-link :to="{ name: 'bills' }" class="nav-link flex-1 justify-center" active-class="active">
           <Receipt :size="15" />
@@ -136,13 +136,10 @@ function handleLogout() {
   color: var(--color-text);
 }
 .nav-link.active {
-  background: linear-gradient(
-    180deg,
-    rgba(170, 59, 255, 0.18),
-    rgba(170, 59, 255, 0.06)
-  );
-  color: #fff;
-  border: 1px solid rgba(170, 59, 255, 0.35);
-  padding: calc(0.55rem - 1px) calc(0.75rem - 1px);
+  background: var(--color-surface-2);
+  color: var(--color-accent);
+  font-weight: 600;
+  border-left: 3px solid var(--color-accent);
+  padding-left: calc(0.75rem - 3px);
 }
 </style>

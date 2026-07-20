@@ -69,7 +69,7 @@ async function onSubmit() {
           <img src="/Logo.png" alt="Siri" class="h-7 w-7 object-contain" />
         </div>
         <div>
-          <h1 class="text-lg font-semibold text-white leading-tight">
+          <h1 class="text-lg font-semibold text-[var(--color-text)] leading-tight">
             Welcome back
           </h1>
           <p class="text-xs text-[var(--color-text-dim)] leading-tight">
@@ -108,7 +108,7 @@ async function onSubmit() {
             />
             <button
               type="button"
-              class="absolute inset-y-0 right-0 px-3 text-[var(--color-text-dim)] hover:text-white transition"
+              class="absolute inset-y-0 right-0 px-3 text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition"
               @click="showPassword = !showPassword"
               :aria-label="showPassword ? 'Hide password' : 'Show password'"
             >
@@ -120,7 +120,7 @@ async function onSubmit() {
 
         <div
           v-if="error"
-          class="flex items-start gap-2 text-sm text-[#fca5a5] bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.25)] rounded-lg px-3 py-2"
+          class="flex items-start gap-2 text-sm text-[var(--color-danger)] bg-[rgba(220,38,38,0.08)] border border-[rgba(220,38,38,0.25)] rounded-lg px-3 py-2"
         >
           <AlertCircle :size="16" class="mt-0.5 shrink-0" />
           <span>{{ error }}</span>

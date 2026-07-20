@@ -1,19 +1,19 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-bg: #07070b;
-  --color-surface: #0f1014;
-  --color-surface-2: #15171d;
-  --color-border: #23262f;
-  --color-border-soft: #1a1c23;
-  --color-text: #e7e9ee;
-  --color-text-muted: #8b8f9c;
-  --color-text-dim: #5a5e6b;
-  --color-accent: #aa3bff;
-  --color-accent-2: #6b2bff;
-  --color-success: #22c55e;
-  --color-warn: #f59e0b;
-  --color-danger: #ef4444;
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f2f5;
+  --color-border: #e3e5ea;
+  --color-border-soft: #edeef2;
+  --color-text: #1a1c23;
+  --color-text-muted: #5b5f6b;
+  --color-text-dim: #9a9ea9;
+  --color-accent: #4f46e5;
+  --color-accent-2: #4338ca;
+  --color-success: #16a34a;
+  --color-warn: #b45309;
+  --color-danger: #dc2626;
 
   --font-sans:
     'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -42,8 +42,8 @@ body {
 }
 
 ::selection {
-  background: rgba(170, 59, 255, 0.35);
-  color: #fff;
+  background: rgba(79, 70, 229, 0.18);
+  color: var(--color-text);
 }
 
 ::-webkit-scrollbar {
@@ -54,53 +54,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2d36;
+  background: #d3d6dd;
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3d48;
-}
-
-.glass {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.02) 0%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  border: 1px solid var(--color-border);
-  backdrop-filter: blur(8px);
-}
-
-.aurora {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-}
-.aurora::before,
-.aurora::after {
-  content: '';
-  position: absolute;
-  width: 60vw;
-  height: 60vw;
-  border-radius: 50%;
-  filter: blur(120px);
-  opacity: 0.35;
-}
-.aurora::before {
-  top: -20vw;
-  left: -10vw;
-  background: radial-gradient(
-    circle,
-    rgba(170, 59, 255, 0.5),
-    transparent 60%
-  );
-}
-.aurora::after {
-  bottom: -25vw;
-  right: -15vw;
-  background: radial-gradient(circle, rgba(59, 130, 255, 0.35), transparent 60%);
+  background: #b9bcc5;
 }
 
 .btn {
@@ -109,14 +67,13 @@ body {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.625rem 1rem;
-  border-radius: 0.625rem;
+  border-radius: 0.5rem;
   font-weight: 500;
   font-size: 0.875rem;
   transition:
     background 0.15s,
     border-color 0.15s,
     color 0.15s,
-    box-shadow 0.15s,
     transform 0.05s;
   cursor: pointer;
   border: 1px solid transparent;
@@ -131,16 +88,11 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(180deg, #b452ff, #8e2dff);
+  background: var(--color-accent);
   color: #fff;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.2) inset,
-    0 8px 24px -8px rgba(170, 59, 255, 0.6);
 }
 .btn-primary:hover {
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.25) inset,
-    0 10px 28px -8px rgba(170, 59, 255, 0.75);
+  background: var(--color-accent-2);
 }
 
 .btn-ghost {
@@ -150,7 +102,7 @@ body {
 }
 .btn-ghost:hover {
   background: var(--color-surface-2);
-  border-color: #2e3140;
+  border-color: #cfd2da;
 }
 
 .input {
@@ -159,7 +111,7 @@ body {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   color: var(--color-text);
-  border-radius: 0.625rem;
+  border-radius: 0.5rem;
   padding: 0.625rem 0.875rem;
   font-size: 0.875rem;
   line-height: 1.25rem;
@@ -176,7 +128,7 @@ body {
 }
 .input:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(170, 59, 255, 0.18);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
 }
 
 /* Native date inputs vary wildly between browsers; normalize them. */
@@ -184,14 +136,13 @@ body {
   font-variant-numeric: tabular-nums;
   text-align: left;
   min-height: 2.5rem;
-  color-scheme: dark;
+  color-scheme: light;
 }
 .date-input::-webkit-date-and-time-value {
   text-align: left;
 }
 .date-input::-webkit-calendar-picker-indicator {
-  filter: invert(0.7);
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: pointer;
   margin-left: 4px;
   padding: 2px;
@@ -211,7 +162,7 @@ body {
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 0.875rem;
+  border-radius: 0.625rem;
 }
 
 .chip {
@@ -227,27 +178,27 @@ body {
   color: var(--color-text-muted);
 }
 .chip-success {
-  border-color: rgba(34, 197, 94, 0.3);
-  background: rgba(34, 197, 94, 0.1);
-  color: #4ade80;
+  border-color: rgba(22, 163, 74, 0.25);
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
 }
 .chip-warn {
-  border-color: rgba(245, 158, 11, 0.3);
-  background: rgba(245, 158, 11, 0.1);
-  color: #fbbf24;
+  border-color: rgba(180, 83, 9, 0.25);
+  background: rgba(180, 83, 9, 0.1);
+  color: #b45309;
 }
 .chip-danger {
-  border-color: rgba(239, 68, 68, 0.3);
-  background: rgba(239, 68, 68, 0.1);
-  color: #f87171;
+  border-color: rgba(220, 38, 38, 0.25);
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
 }
 
 .spinner {
   width: 1rem;
   height: 1rem;
   border-radius: 999px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-top-color: #fff;
+  border: 2px solid rgba(0, 0, 0, 0.12);
+  border-top-color: currentColor;
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin {

@@ -14,7 +14,6 @@ onMounted(() => {
 
 <template>
   <div class="relative min-h-full">
-    <div class="aurora" aria-hidden="true"></div>
     <Transition name="fade">
       <LoadingScreen v-if="booting" />
     </Transition>

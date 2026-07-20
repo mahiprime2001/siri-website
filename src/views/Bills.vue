@@ -265,7 +265,7 @@ function clearFilters() {
   <div class="p-4 sm:p-6 md:p-8 max-w-[1400px] mx-auto">
     <header class="mb-5 sm:mb-6 flex items-end justify-between gap-3 flex-wrap">
       <div class="min-w-0">
-        <h1 class="text-xl sm:text-2xl font-semibold text-white tracking-tight">
+        <h1 class="text-xl sm:text-2xl font-semibold text-[var(--color-text)] tracking-tight">
           Bills
         </h1>
         <p class="text-xs sm:text-sm text-[var(--color-text-muted)] mt-1">
@@ -366,22 +366,22 @@ function clearFilters() {
 
       <div class="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-[var(--color-border-soft)]">
         <span class="text-xs text-[var(--color-text-dim)] mr-1">Quick:</span>
-        <button class="chip hover:text-white transition" @click="setQuickRange(1)">
+        <button class="chip hover:text-[var(--color-text)] transition" @click="setQuickRange(1)">
           Today
         </button>
-        <button class="chip hover:text-white transition" @click="setQuickRange(7)">
+        <button class="chip hover:text-[var(--color-text)] transition" @click="setQuickRange(7)">
           Last 7 days
         </button>
-        <button class="chip hover:text-white transition" @click="setQuickRange(30)">
+        <button class="chip hover:text-[var(--color-text)] transition" @click="setQuickRange(30)">
           Last 30 days
         </button>
-        <button class="chip hover:text-white transition" @click="setQuickRange(null)">
+        <button class="chip hover:text-[var(--color-text)] transition" @click="setQuickRange(null)">
           All time
         </button>
         <div class="flex-1"></div>
         <button
           v-if="search || dateFrom || dateTo"
-          class="text-xs text-[var(--color-text-muted)] hover:text-white transition"
+          class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition"
           @click="clearFilters"
         >
           Clear filters
@@ -392,7 +392,7 @@ function clearFilters() {
     <section class="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-5">
       <div class="card p-4">
         <p class="text-xs text-[var(--color-text-muted)]">Bills</p>
-        <p class="text-2xl font-semibold text-white mt-1 tabular-nums">
+        <p class="text-2xl font-semibold text-[var(--color-text)] mt-1 tabular-nums">
           {{ summary.count.toLocaleString() }}
         </p>
         <p class="text-xs text-[var(--color-text-dim)] mt-0.5">
@@ -403,7 +403,7 @@ function clearFilters() {
         <p class="text-xs text-[var(--color-text-muted)]">
           Total (this page)
         </p>
-        <p class="text-2xl font-semibold text-white mt-1 tabular-nums">
+        <p class="text-2xl font-semibold text-[var(--color-text)] mt-1 tabular-nums">
           {{ fmtMoney(summary.total) }}
         </p>
         <p class="text-xs text-[var(--color-text-dim)] mt-0.5">
@@ -415,7 +415,7 @@ function clearFilters() {
           class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[var(--color-accent)]/50 to-transparent"
         ></div>
         <p class="text-xs text-[var(--color-text-muted)]">Today's bills</p>
-        <p class="text-2xl font-semibold text-white mt-1 tabular-nums">
+        <p class="text-2xl font-semibold text-[var(--color-text)] mt-1 tabular-nums">
           <span v-if="loadingToday" class="text-[var(--color-text-dim)]">…</span>
           <span v-else>{{ fmtMoney(todayTotal) }}</span>
         </p>
@@ -425,7 +425,7 @@ function clearFilters() {
       </div>
       <div class="card p-4">
         <p class="text-xs text-[var(--color-text-muted)]">Today's discount</p>
-        <p class="text-2xl font-semibold text-white mt-1 tabular-nums">
+        <p class="text-2xl font-semibold text-[var(--color-text)] mt-1 tabular-nums">
           <span v-if="loadingToday" class="text-[var(--color-text-dim)]">…</span>
           <span v-else>{{ fmtMoney(todayDiscount) }}</span>
         </p>
@@ -675,7 +675,7 @@ function clearFilters() {
                           <tr v-if="loadingItems[b.id]">
                             <td colspan="5" class="px-4 py-6 text-center text-[var(--color-text-dim)]">
                               <span class="inline-flex items-center gap-2">
-                                <span class="spinner" style="border-top-color: var(--color-accent); border-color: rgba(170,59,255,0.25)"></span>
+                                <span class="spinner" style="border-top-color: var(--color-accent); border-color: rgba(79,70,229,0.25)"></span>
                                 Loading items…
                               </span>
                             </td>

@@ -79,6 +79,21 @@ onUnmounted(() => {
 let storeChannel: RealtimeChannel | null = null
 let devicesChannel: RealtimeChannel | null = null
 
+/** Collapses a burst of rapid-fire realtime events (e.g. a phone that was
+ *  offline dumping many queued records at once) into a single reload, so
+ *  the photo thumbnails don't flicker by re-fetching on every single event. */
+function debounce(fn: () => void, waitMs: number): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return () => {
+    clearTimeout(timer)
+    timer = setTimeout(fn, waitMs)
+  }
+}
+
+const debouncedLoadRecords = debounce(() => loadRecords(), 600)
+const debouncedLoadEmployees = debounce(() => loadEmployees(), 600)
+const debouncedLoadDevices = debounce(() => loadDevices(), 600)
+
 function subscribeStore(storeId: string) {
   if (storeChannel) {
     supabase.removeChannel(storeChannel)
@@ -90,12 +105,12 @@ function subscribeStore(storeId: string) {
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'attendance_records', filter: `store_id=eq.${storeId}` },
-      () => loadRecords()
+      () => debouncedLoadRecords()
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'attendance_employees', filter: `store_id=eq.${storeId}` },
-      () => loadEmployees()
+      () => debouncedLoadEmployees()
     )
     .subscribe()
 }
@@ -107,7 +122,7 @@ function subscribeDevices() {
       'postgres_changes',
       { event: '*', schema: 'public', table: 'attendance_devices' },
       () => {
-        if (drawer.value === 'devices') loadDevices()
+        if (drawer.value === 'devices') debouncedLoadDevices()
       }
     )
     .subscribe()
@@ -544,7 +559,7 @@ function isOnline(d: AttendanceDevice): boolean {
 
     <div
       v-if="error"
-      class="card p-3 flex items-center gap-2 text-sm text-red-400 border-red-500/30"
+      class="card p-3 flex items-center gap-2 text-sm text-red-600 border-red-500/30"
     >
       <AlertCircle :size="16" />
       {{ error }}
@@ -558,15 +573,15 @@ function isOnline(d: AttendanceDevice): boolean {
       </div>
       <div class="card p-3.5">
         <p class="stat-label">Present</p>
-        <p class="stat-value text-green-400">{{ presentCount }}</p>
+        <p class="stat-value text-green-600">{{ presentCount }}</p>
       </div>
       <div class="card p-3.5">
         <p class="stat-label">Leaves</p>
-        <p class="stat-value text-amber-400">{{ totalLeaves }}</p>
+        <p class="stat-value text-amber-600">{{ totalLeaves }}</p>
       </div>
       <div class="card p-3.5">
         <p class="stat-label">Still in</p>
-        <p class="stat-value text-sky-400">{{ stillIn }}</p>
+        <p class="stat-value text-sky-600">{{ stillIn }}</p>
       </div>
     </div>
 
@@ -615,22 +630,22 @@ function isOnline(d: AttendanceDevice): boolean {
                     </div>
                     <div class="min-w-0">
                       <p class="font-medium truncate">{{ s.emp.name }}</p>
-                      <p v-if="s.emp.enroll_status !== 'enrolled'" class="text-[11px] text-amber-400">
+                      <p v-if="s.emp.enroll_status !== 'enrolled'" class="text-[11px] text-amber-600">
                         Waiting for face scan
                       </p>
-                      <p v-else-if="s.emp.status !== 'active'" class="text-[11px] text-red-400">
+                      <p v-else-if="s.emp.status !== 'active'" class="text-[11px] text-red-600">
                         Disabled
                       </p>
                     </div>
                   </div>
                 </td>
                 <td class="td tabular-nums">
-                  <span :class="s.daysPresent ? 'text-green-400' : 'text-[var(--color-text-dim)]'">
+                  <span :class="s.daysPresent ? 'text-green-600' : 'text-[var(--color-text-dim)]'">
                     {{ s.daysPresent }}<span v-if="!singleDay" class="text-[var(--color-text-dim)]"> / {{ s.totalDays }}</span>
                   </span>
                 </td>
                 <td class="td tabular-nums">
-                  <span :class="s.leaves ? 'text-amber-400' : 'text-[var(--color-text-dim)]'">{{ s.leaves }}</span>
+                  <span :class="s.leaves ? 'text-amber-600' : 'text-[var(--color-text-dim)]'">{{ s.leaves }}</span>
                 </td>
                 <td v-if="singleDay" class="td">
                   <div v-if="s.firstIn" class="flex items-center gap-2">
@@ -640,7 +655,7 @@ function isOnline(d: AttendanceDevice): boolean {
                       class="thumb"
                       @click.stop="photoPreview = s.firstIn.photo_url"
                     />
-                    <span class="tabular-nums text-green-400">{{ fmtTime(s.firstIn.ts) }}</span>
+                    <span class="tabular-nums text-green-600">{{ fmtTime(s.firstIn.ts) }}</span>
                   </div>
                   <span v-else class="text-[var(--color-text-dim)]">—</span>
                 </td>
@@ -652,7 +667,7 @@ function isOnline(d: AttendanceDevice): boolean {
                       class="thumb"
                       @click.stop="photoPreview = s.lastOut.photo_url"
                     />
-                    <span class="tabular-nums text-amber-400">{{ fmtTime(s.lastOut.ts) }}</span>
+                    <span class="tabular-nums text-amber-600">{{ fmtTime(s.lastOut.ts) }}</span>
                   </div>
                   <span v-else-if="s.firstIn && isToday(dateFrom)" class="chip chip-success">
                     <Clock :size="11" />
@@ -694,7 +709,7 @@ function isOnline(d: AttendanceDevice): boolean {
                                 class="thumb"
                                 @click="photoPreview = sess.inRec.photo_url"
                               />
-                              <span class="tabular-nums text-green-400">IN {{ fmtTime(sess.inRec.ts) }}</span>
+                              <span class="tabular-nums text-green-600">IN {{ fmtTime(sess.inRec.ts) }}</span>
                             </div>
                             <span v-else class="text-[var(--color-text-dim)]">—</span>
                           </td>
@@ -706,7 +721,7 @@ function isOnline(d: AttendanceDevice): boolean {
                                 class="thumb"
                                 @click="photoPreview = sess.outRec.photo_url"
                               />
-                              <span class="tabular-nums text-amber-400">OUT {{ fmtTime(sess.outRec.ts) }}</span>
+                              <span class="tabular-nums text-amber-600">OUT {{ fmtTime(sess.outRec.ts) }}</span>
                             </div>
                             <span v-else-if="isToday(d.date)" class="chip chip-success">
                               <Clock :size="11" />
@@ -736,7 +751,7 @@ function isOnline(d: AttendanceDevice): boolean {
         class="absolute right-0 top-0 h-full w-full max-w-md bg-[var(--color-bg)] border-l border-[var(--color-border)] overflow-y-auto"
       >
         <div
-          class="sticky top-0 z-10 flex items-center gap-2 px-4 h-14 border-b border-[var(--color-border)] bg-[var(--color-bg)]/95 backdrop-blur"
+          class="sticky top-0 z-10 flex items-center gap-2 px-4 h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)]"
         >
           <component :is="drawer === 'members' ? Users : Smartphone" :size="17" />
           <h2 class="font-semibold mr-auto">
@@ -854,7 +869,7 @@ function isOnline(d: AttendanceDevice): boolean {
             >
               <div
                 class="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
-                :class="isOnline(d) ? 'bg-green-500/10 text-green-400' : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)]'"
+                :class="isOnline(d) ? 'bg-green-500/10 text-green-600' : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)]'"
               >
                 <Smartphone :size="15" />
               </div>
@@ -870,7 +885,7 @@ function isOnline(d: AttendanceDevice): boolean {
                   @click="copyCode(d.activation_code)"
                 >
                   {{ d.activation_code }}
-                  <CheckCircle2 v-if="copiedCode === d.activation_code" :size="11" class="text-green-400" />
+                  <CheckCircle2 v-if="copiedCode === d.activation_code" :size="11" class="text-green-600" />
                   <Copy v-else :size="11" />
                 </button>
               </div>
@@ -918,12 +933,8 @@ function isOnline(d: AttendanceDevice): boolean {
   background: var(--color-surface-2);
 }
 .preset-chip.active {
-  border-color: rgba(170, 59, 255, 0.5);
-  background: linear-gradient(
-    180deg,
-    rgba(170, 59, 255, 0.18),
-    rgba(170, 59, 255, 0.06)
-  );
+  border-color: var(--color-accent);
+  background: var(--color-accent);
   color: #fff;
 }
 
@@ -1000,10 +1011,10 @@ function isOnline(d: AttendanceDevice): boolean {
   color: var(--color-text);
 }
 .icon-action.danger {
-  color: #f87171;
+  color: var(--color-danger);
 }
 .icon-action.danger:hover {
-  border-color: rgba(239, 68, 68, 0.5);
-  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(220, 38, 38, 0.4);
+  background: rgba(220, 38, 38, 0.08);
 }
 </style>
