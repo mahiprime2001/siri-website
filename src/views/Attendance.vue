@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   Store as StoreIcon,
   Users,
   Smartphone,
   Plus,
-  RefreshCw,
   UserX,
   UserCheck,
   ScanFace,
@@ -64,7 +63,20 @@ const singleDay = computed(() => dateFrom.value === dateTo.value)
 
 // ---------------- loading ----------------
 
-onMounted(loadStores)
+const AUTO_REFRESH_MS = 20_000
+let autoRefreshTimer: ReturnType<typeof setInterval> | undefined
+
+onMounted(() => {
+  loadStores()
+  autoRefreshTimer = setInterval(() => {
+    refresh()
+    if (drawer.value === 'devices') loadDevices()
+  }, AUTO_REFRESH_MS)
+})
+
+onUnmounted(() => {
+  clearInterval(autoRefreshTimer)
+})
 
 async function loadStores() {
   try {
@@ -491,9 +503,6 @@ function isOnline(d: AttendanceDevice): boolean {
         <button class="btn btn-ghost !px-3" title="Devices" @click="openDrawer('devices')">
           <Smartphone :size="16" />
           <span class="hidden sm:inline">Devices</span>
-        </button>
-        <button class="btn btn-ghost !px-2.5" title="Refresh" @click="refresh">
-          <RefreshCw :size="15" />
         </button>
       </div>
     </div>
