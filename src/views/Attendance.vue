@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { format, parseISO } from 'date-fns'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { fmtDateInput } from '../lib/format'
 import type {
@@ -63,20 +64,54 @@ const singleDay = computed(() => dateFrom.value === dateTo.value)
 
 // ---------------- loading ----------------
 
-const AUTO_REFRESH_MS = 20_000
-let autoRefreshTimer: ReturnType<typeof setInterval> | undefined
-
 onMounted(() => {
   loadStores()
-  autoRefreshTimer = setInterval(() => {
-    refresh()
-    if (drawer.value === 'devices') loadDevices()
-  }, AUTO_REFRESH_MS)
+  subscribeDevices()
 })
 
 onUnmounted(() => {
-  clearInterval(autoRefreshTimer)
+  if (storeChannel) supabase.removeChannel(storeChannel)
+  if (devicesChannel) supabase.removeChannel(devicesChannel)
 })
+
+// ---------------- live updates (Supabase Realtime, no polling) ----------------
+
+let storeChannel: RealtimeChannel | null = null
+let devicesChannel: RealtimeChannel | null = null
+
+function subscribeStore(storeId: string) {
+  if (storeChannel) {
+    supabase.removeChannel(storeChannel)
+    storeChannel = null
+  }
+  if (!storeId) return
+  storeChannel = supabase
+    .channel(`attendance-store-${storeId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'attendance_records', filter: `store_id=eq.${storeId}` },
+      () => loadRecords()
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'attendance_employees', filter: `store_id=eq.${storeId}` },
+      () => loadEmployees()
+    )
+    .subscribe()
+}
+
+function subscribeDevices() {
+  devicesChannel = supabase
+    .channel('attendance-devices-all')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'attendance_devices' },
+      () => {
+        if (drawer.value === 'devices') loadDevices()
+      }
+    )
+    .subscribe()
+}
 
 async function loadStores() {
   try {
@@ -108,10 +143,15 @@ function setPreset(p: Preset) {
   }
 }
 
-watch(selectedStoreId, () => {
-  refresh()
-  if (drawer.value === 'devices') loadDevices()
-})
+watch(
+  selectedStoreId,
+  (id) => {
+    refresh()
+    subscribeStore(id)
+    if (drawer.value === 'devices') loadDevices()
+  },
+  { immediate: true }
+)
 watch([dateFrom, dateTo], () => loadRecords())
 
 async function refresh() {
@@ -395,13 +435,8 @@ const devicesByStore = computed(() => {
 })
 
 function genCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let code = ''
-  for (let i = 0; i < 8; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)]
-    if (i === 3) code += '-'
-  }
-  return code
+  // Simple 6-digit code — quick to type on a phone's numpad.
+  return String(Math.floor(100000 + Math.random() * 900000))
 }
 
 const creatingFor = ref<string | null>(null)
