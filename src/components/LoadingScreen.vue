@@ -61,15 +61,15 @@ onMounted(() => {
     <div class="relative flex items-center justify-center w-40 h-40">
       <span
         ref="ring1"
-        class="absolute inset-0 rounded-full border border-[rgba(79,70,229,0.45)]"
+        class="absolute inset-0 rounded-full border border-[oklch(56%_0.2_258_/_0.4)]"
       ></span>
       <span
         ref="ring2"
-        class="absolute inset-0 rounded-full border border-[rgba(79,70,229,0.3)]"
+        class="absolute inset-0 rounded-full border border-[oklch(56%_0.2_258_/_0.26)]"
       ></span>
       <span
         ref="ring3"
-        class="absolute inset-0 rounded-full border border-[rgba(79,70,229,0.18)]"
+        class="absolute inset-0 rounded-full border border-[oklch(56%_0.2_258_/_0.14)]"
       ></span>
       <div
         class="relative h-24 w-24 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center overflow-hidden"
@@ -85,7 +85,7 @@ onMounted(() => {
 
     <div class="mt-8 text-center">
       <p
-        class="text-sm tracking-[0.25em] uppercase text-[var(--color-text-muted)]"
+        class="font-display text-sm tracking-[0.2em] uppercase text-[var(--color-text-muted)]"
       >
         Siri Admin
       </p>

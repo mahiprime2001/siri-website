@@ -1,23 +1,29 @@
 @import 'tailwindcss';
 
-@theme {
-  --color-bg: #f7f8fa;
-  --color-surface: #ffffff;
-  --color-surface-2: #f1f2f5;
-  --color-border: #e3e5ea;
-  --color-border-soft: #edeef2;
-  --color-text: #1a1c23;
-  --color-text-muted: #5b5f6b;
-  --color-text-dim: #9a9ea9;
-  --color-accent: #4f46e5;
-  --color-accent-2: #4338ca;
-  --color-success: #16a34a;
-  --color-warn: #b45309;
-  --color-danger: #dc2626;
+/* Hallmark · genre: modern-minimal · theme: Instrument (Cobalt-tuned)
+ * app-shell pattern (no landing macrostructure — see design.md)
+ * accent hue: 258 (cool cobalt) · display: Space Grotesk · body: Geist · mono: JetBrains Mono
+ */
 
-  --font-sans:
-    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+@theme {
+  --color-bg: oklch(98.5% 0.004 250);
+  --color-surface: oklch(100% 0.003 250);
+  --color-surface-2: oklch(96% 0.006 250);
+  --color-border: oklch(90% 0.007 250);
+  --color-border-soft: oklch(93.5% 0.006 250);
+  --color-text: oklch(21% 0.02 258);
+  --color-text-muted: oklch(46% 0.016 258);
+  --color-text-dim: oklch(64% 0.012 258);
+  --color-accent: oklch(56% 0.2 258);
+  --color-accent-ink: oklch(99% 0.006 258);
+  --color-accent-2: oklch(48% 0.19 258);
+  --color-success: oklch(56% 0.15 155);
+  --color-warn: oklch(62% 0.15 70);
+  --color-danger: oklch(56% 0.19 25);
+
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
 }
 
 html,
@@ -41,8 +47,22 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.font-mono,
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 ::selection {
-  background: rgba(79, 70, 229, 0.18);
+  background: oklch(56% 0.2 258 / 0.18);
   color: var(--color-text);
 }
 
@@ -54,27 +74,30 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d3d6dd;
+  background: oklch(85% 0.01 258);
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #b9bcc5;
+  background: oklch(75% 0.014 258);
 }
+
+/* ---------- buttons ---------- */
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.625rem 1rem;
+  height: 2.5rem;
+  padding: 0 1rem;
   border-radius: 0.5rem;
   font-weight: 500;
   font-size: 0.875rem;
+  white-space: nowrap;
   transition:
-    background 0.15s,
-    border-color 0.15s,
-    color 0.15s,
-    transform 0.05s;
+    background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 150ms cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
   border: 1px solid transparent;
   user-select: none;
@@ -86,10 +109,14 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
 
 .btn-primary {
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-accent-ink);
 }
 .btn-primary:hover {
   background: var(--color-accent-2);
@@ -102,47 +129,52 @@ body {
 }
 .btn-ghost:hover {
   background: var(--color-surface-2);
-  border-color: #cfd2da;
+  border-color: oklch(82% 0.01 258);
 }
+
+/* ---------- inputs ---------- */
 
 .input {
   width: 100%;
   min-width: 0;
+  height: 2.5rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   color: var(--color-text);
   border-radius: 0.5rem;
-  padding: 0.625rem 0.875rem;
+  padding: 0 0.75rem;
   font-size: 0.875rem;
   line-height: 1.25rem;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
   transition:
-    border-color 0.15s,
-    box-shadow 0.15s,
-    background 0.15s;
-  outline: none;
+    background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    outline-color 0ms;
   -webkit-appearance: none;
   appearance: none;
 }
 .input::placeholder {
   color: var(--color-text-dim);
 }
+.input:hover {
+  background: var(--color-surface-2);
+}
 .input:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  outline-color: var(--color-focus, var(--color-accent));
+  background: var(--color-surface);
 }
 
-/* Native date inputs vary wildly between browsers; normalize them. */
 .date-input {
   font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
   text-align: left;
-  min-height: 2.5rem;
   color-scheme: light;
 }
 .date-input::-webkit-date-and-time-value {
   text-align: left;
 }
 .date-input::-webkit-calendar-picker-indicator {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: pointer;
   margin-left: 4px;
   padding: 2px;
@@ -159,11 +191,60 @@ body {
   color: var(--color-text-dim);
 }
 
+/* ---------- surfaces ---------- */
+
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 0.625rem;
+  border-radius: 0.75rem;
 }
+
+/* Stat rail — one bordered strip, hairline-divided cells. Not a card grid. */
+.stat-rail {
+  display: grid;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+.stat-cell {
+  padding: 0.875rem 1.125rem;
+  border-inline-start: 1px solid var(--color-border-soft);
+}
+.stat-cell:first-child {
+  border-inline-start: none;
+}
+.stat-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+.stat-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-text);
+}
+
+/* ---------- page header ---------- */
+
+.page-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.375rem;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+.page-sub {
+  font-size: 0.8125rem;
+  color: var(--color-text-dim);
+}
+
+/* ---------- status pills ---------- */
 
 .chip {
   display: inline-flex;
@@ -178,26 +259,70 @@ body {
   color: var(--color-text-muted);
 }
 .chip-success {
-  border-color: rgba(22, 163, 74, 0.25);
-  background: rgba(22, 163, 74, 0.1);
-  color: #15803d;
+  border-color: oklch(56% 0.15 155 / 0.28);
+  background: oklch(56% 0.15 155 / 0.1);
+  color: oklch(38% 0.12 155);
 }
 .chip-warn {
-  border-color: rgba(180, 83, 9, 0.25);
-  background: rgba(180, 83, 9, 0.1);
-  color: #b45309;
+  border-color: oklch(62% 0.15 70 / 0.3);
+  background: oklch(62% 0.15 70 / 0.12);
+  color: oklch(42% 0.13 60);
 }
 .chip-danger {
-  border-color: rgba(220, 38, 38, 0.25);
-  background: rgba(220, 38, 38, 0.1);
-  color: #dc2626;
+  border-color: oklch(56% 0.19 25 / 0.28);
+  background: oklch(56% 0.19 25 / 0.1);
+  color: var(--color-danger);
+}
+
+/* ---------- table ---------- */
+
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.tbl thead th {
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.tbl tbody td {
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--color-border-soft);
+  vertical-align: middle;
+}
+.tbl tbody tr:last-child td {
+  border-bottom: none;
+}
+.tbl tbody tr {
+  transition: background-color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tbl tbody tr:hover {
+  background: var(--color-surface-2);
+}
+/* One-shot pulse for realtime row updates — signals "this changed", no toast. */
+@keyframes row-pulse {
+  from {
+    background-color: oklch(56% 0.2 258 / 0.1);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.tbl tbody tr.is-updated {
+  animation: row-pulse 400ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .spinner {
   width: 1rem;
   height: 1rem;
   border-radius: 999px;
-  border: 2px solid rgba(0, 0, 0, 0.12);
+  border: 2px solid oklch(0% 0 0 / 0.1);
   border-top-color: currentColor;
   animation: spin 0.8s linear infinite;
 }

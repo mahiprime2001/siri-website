@@ -6,6 +6,11 @@ import { useAuth } from '../lib/auth'
 const { user, logout } = useAuth()
 const router = useRouter()
 
+const nav = [
+  { name: 'bills', label: 'Bills', icon: Receipt },
+  { name: 'attendance', label: 'Attendance', icon: CalendarCheck },
+]
+
 function handleLogout() {
   logout()
   router.replace({ name: 'login' })
@@ -13,123 +18,146 @@ function handleLogout() {
 </script>
 
 <template>
-  <div class="relative z-10 flex min-h-screen">
-    <aside
-      class="hidden md:flex w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]"
-    >
-      <div
-        class="flex items-center gap-3 px-5 h-16 border-b border-[var(--color-border)]"
-      >
-        <img src="/Logo.png" alt="Siri" class="h-8 w-8 rounded-md" />
-        <div class="flex flex-col">
-          <span class="text-sm font-semibold leading-tight">Siri Admin</span>
-          <span class="text-[11px] text-[var(--color-text-dim)] leading-tight"
-            >Bills viewer</span
-          >
+  <div class="shell">
+    <!-- desktop sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <img src="/Logo.png" alt="Siri" class="sidebar__logo" />
+        <div class="min-w-0">
+          <p class="sidebar__wordmark">Siri Admin</p>
+          <p class="sidebar__tag">Ops console</p>
         </div>
       </div>
 
-      <div class="p-3 border-b border-[var(--color-border)]">
-        <div class="flex items-center gap-3 px-2 py-2">
-          <div
-            class="h-9 w-9 rounded-full bg-[var(--color-accent)] text-white flex items-center justify-center text-sm font-semibold"
-          >
+      <nav class="sidebar__nav">
+        <router-link
+          v-for="item in nav"
+          :key="item.name"
+          :to="{ name: item.name }"
+          class="nav-link"
+          active-class="active"
+        >
+          <component :is="item.icon" :size="17" />
+          <span>{{ item.label }}</span>
+        </router-link>
+      </nav>
+
+      <div class="sidebar__foot">
+        <div class="sidebar__user">
+          <div class="avatar">
             {{ (user?.name || user?.email || '?').charAt(0).toUpperCase() }}
           </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm truncate">{{ user?.name || 'Admin' }}</p>
-            <p class="text-xs text-[var(--color-text-dim)] truncate">
-              {{ user?.email }}
-            </p>
+          <div class="min-w-0 flex-1">
+            <p class="sidebar__user-name">{{ user?.name || 'Admin' }}</p>
+            <p class="sidebar__user-email">{{ user?.email }}</p>
           </div>
         </div>
-        <button class="btn btn-ghost w-full mt-2" @click="handleLogout">
+        <button class="btn btn-ghost w-full mt-2.5" @click="handleLogout">
           <LogOut :size="14" />
           <span>Sign out</span>
         </button>
       </div>
-
-      <nav class="flex-1 p-3 space-y-1">
-        <router-link
-          :to="{ name: 'bills' }"
-          class="nav-link"
-          active-class="active"
-        >
-          <Receipt :size="16" />
-          <span>Bills by store</span>
-        </router-link>
-        <router-link
-          :to="{ name: 'attendance' }"
-          class="nav-link"
-          active-class="active"
-        >
-          <CalendarCheck :size="16" />
-          <span>Attendance</span>
-        </router-link>
-      </nav>
     </aside>
 
-    <main class="flex-1 min-w-0">
-      <header
-        class="md:hidden sticky top-0 z-30 flex items-center justify-between gap-3 px-4 h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)]"
-      >
-        <div class="flex items-center gap-2 min-w-0">
-          <img src="/Logo.png" alt="Siri" class="h-7 w-7 rounded-md shrink-0" />
-          <span class="text-sm font-semibold truncate">Siri Admin</span>
-        </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <div
-            class="flex items-center gap-2 pl-1.5 pr-2 py-1 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)]"
-          >
-            <div
-              class="h-6 w-6 rounded-full bg-[var(--color-accent)] text-white flex items-center justify-center text-[11px] font-semibold"
-            >
-              {{ (user?.name || user?.email || '?').charAt(0).toUpperCase() }}
-            </div>
-            <span class="text-xs text-[var(--color-text-muted)] truncate max-w-[80px]">
-              {{ user?.name || 'Admin' }}
-            </span>
-          </div>
-          <button
-            class="btn btn-ghost !py-1.5 !px-2"
-            @click="handleLogout"
-            aria-label="Sign out"
-          >
-            <LogOut :size="14" />
-          </button>
-        </div>
-      </header>
-      <nav
-        class="md:hidden flex gap-1 px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)]"
-      >
-        <router-link :to="{ name: 'bills' }" class="nav-link flex-1 justify-center" active-class="active">
-          <Receipt :size="15" />
-          <span>Bills</span>
-        </router-link>
-        <router-link :to="{ name: 'attendance' }" class="nav-link flex-1 justify-center" active-class="active">
-          <CalendarCheck :size="15" />
-          <span>Attendance</span>
-        </router-link>
-      </nav>
+    <!-- mobile top bar -->
+    <header class="topbar">
+      <div class="flex items-center gap-2 min-w-0">
+        <img src="/Logo.png" alt="Siri" class="h-7 w-7 rounded-md shrink-0" />
+        <span class="font-display font-semibold text-sm truncate">Siri Admin</span>
+      </div>
+      <button class="avatar avatar--sm" aria-label="Account" @click="handleLogout">
+        {{ (user?.name || user?.email || '?').charAt(0).toUpperCase() }}
+      </button>
+    </header>
+
+    <main class="content">
       <router-view />
     </main>
+
+    <!-- mobile bottom tab bar — 2 destinations, thumb-reachable, always visible -->
+    <nav class="tabbar">
+      <router-link
+        v-for="item in nav"
+        :key="item.name"
+        :to="{ name: item.name }"
+        class="tabbar__item"
+        active-class="active"
+      >
+        <component :is="item.icon" :size="20" />
+        <span>{{ item.label }}</span>
+      </router-link>
+    </nav>
   </div>
 </template>
 
 <style scoped>
+.shell {
+  min-height: 100dvh;
+  display: flex;
+}
+
+/* ---------- desktop sidebar ---------- */
+.sidebar {
+  display: none;
+  width: 17rem;
+  flex-shrink: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+@media (min-width: 60rem) {
+  .sidebar {
+    display: flex;
+  }
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 1.25rem;
+  height: 4rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.sidebar__logo {
+  height: 2rem;
+  width: 2rem;
+  border-radius: 0.5rem;
+}
+.sidebar__wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.sidebar__tag {
+  font-size: 0.6875rem;
+  color: var(--color-text-dim);
+  line-height: 1.2;
+}
+
+.sidebar__nav {
+  flex: 1;
+  padding: 0.875rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
 .nav-link {
   display: flex;
   align-items: center;
   gap: 0.625rem;
-  padding: 0.55rem 0.75rem;
+  padding: 0.5rem 0.625rem;
   border-radius: 0.5rem;
   color: var(--color-text-muted);
   font-size: 0.875rem;
   font-weight: 500;
-  transition:
-    background 0.15s,
-    color 0.15s;
+  transition: background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 150ms cubic-bezier(0.16, 1, 0.3, 1);
   text-decoration: none;
+  border-left: 3px solid transparent;
 }
 .nav-link:hover {
   background: var(--color-surface-2);
@@ -139,7 +167,119 @@ function handleLogout() {
   background: var(--color-surface-2);
   color: var(--color-accent);
   font-weight: 600;
-  border-left: 3px solid var(--color-accent);
-  padding-left: calc(0.75rem - 3px);
+  border-left-color: var(--color-accent);
+}
+
+.sidebar__foot {
+  padding: 0.875rem;
+  border-top: 1px solid var(--color-border);
+}
+.sidebar__user {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.25rem;
+}
+.sidebar__user-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar__user-email {
+  font-size: 0.6875rem;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.avatar {
+  height: 2.125rem;
+  width: 2.125rem;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.avatar--sm {
+  height: 1.875rem;
+  width: 1.875rem;
+  font-size: 0.75rem;
+  border: none;
+  cursor: pointer;
+}
+
+/* ---------- mobile top bar ---------- */
+.topbar {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0 1rem;
+  height: 3.25rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+@media (max-width: 59.99rem) {
+  .topbar {
+    display: flex;
+  }
+}
+
+/* ---------- content ---------- */
+.content {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 0;
+}
+@media (max-width: 59.99rem) {
+  .content {
+    padding-bottom: 4.25rem; /* clears the fixed tab bar */
+  }
+}
+
+/* ---------- mobile bottom tab bar ---------- */
+.tabbar {
+  display: none;
+}
+@media (max-width: 59.99rem) {
+  .tabbar {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 30;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+}
+.tabbar__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1875rem;
+  padding: 0.5rem 0 0.625rem;
+  min-height: 3rem;
+  color: var(--color-text-dim);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.tabbar__item.active {
+  color: var(--color-accent);
 }
 </style>

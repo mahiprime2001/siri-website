@@ -262,15 +262,12 @@ function clearFilters() {
 </script>
 
 <template>
-  <div class="p-4 sm:p-6 md:p-8 max-w-[1400px] mx-auto">
-    <header class="mb-5 sm:mb-6 flex items-end justify-between gap-3 flex-wrap">
+  <div class="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto">
+    <!-- page header -->
+    <header class="mb-4 flex items-center justify-between gap-3 flex-wrap">
       <div class="min-w-0">
-        <h1 class="text-xl sm:text-2xl font-semibold text-[var(--color-text)] tracking-tight">
-          Bills
-        </h1>
-        <p class="text-xs sm:text-sm text-[var(--color-text-muted)] mt-1">
-          Browse every bill issued at a store, with full line-item detail.
-        </p>
+        <h1 class="page-title">Bills</h1>
+        <p class="page-sub mt-0.5">Every bill issued at a store, with full line-item detail.</p>
       </div>
       <button
         class="btn btn-ghost"
@@ -282,12 +279,40 @@ function clearFilters() {
       </button>
     </header>
 
-    <section class="card p-4 md:p-5 mb-5">
-      <div class="grid gap-4 md:grid-cols-12">
-        <div class="md:col-span-4">
-          <label
-            class="text-xs text-[var(--color-text-muted)] mb-1.5 flex items-center gap-1.5"
-          >
+    <!-- stat rail -->
+    <div class="stat-rail grid-cols-2 sm:grid-cols-4 mb-4">
+      <div class="stat-cell">
+        <p class="stat-label">Bills</p>
+        <p class="stat-value">{{ summary.count.toLocaleString() }}</p>
+      </div>
+      <div class="stat-cell">
+        <p class="stat-label">Total (page)</p>
+        <p class="stat-value">{{ fmtMoney(summary.total) }}</p>
+      </div>
+      <div class="stat-cell">
+        <p class="stat-label">Today's bills</p>
+        <p class="stat-value">
+          <span v-if="loadingToday" class="text-[var(--color-text-dim)]">…</span>
+          <span v-else>{{ fmtMoney(todayTotal) }}</span>
+        </p>
+        <p class="text-[11px] text-[var(--color-text-dim)] mt-0.5">
+          {{ todayCount }} bill{{ todayCount === 1 ? '' : 's' }}
+        </p>
+      </div>
+      <div class="stat-cell">
+        <p class="stat-label">Today's discount</p>
+        <p class="stat-value">
+          <span v-if="loadingToday" class="text-[var(--color-text-dim)]">…</span>
+          <span v-else>{{ fmtMoney(todayDiscount) }}</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- toolbar -->
+    <section class="card p-3.5 mb-4">
+      <div class="flex flex-wrap items-end gap-3">
+        <div class="w-full sm:w-56">
+          <label class="text-xs text-[var(--color-text-muted)] mb-1.5 flex items-center gap-1.5">
             <StoreIcon :size="12" /> Store
           </label>
           <div class="relative">
@@ -307,18 +332,10 @@ function clearFilters() {
               class="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-dim)] pointer-events-none"
             />
           </div>
-          <p
-            v-if="storesError"
-            class="text-xs text-[#fca5a5] mt-1.5 flex items-center gap-1"
-          >
-            <AlertCircle :size="12" /> {{ storesError }}
-          </p>
         </div>
 
-        <div class="md:col-span-4">
-          <label
-            class="text-xs text-[var(--color-text-muted)] mb-1.5 flex items-center gap-1.5"
-          >
+        <div class="flex-1 min-w-[10rem]">
+          <label class="text-xs text-[var(--color-text-muted)] mb-1.5 flex items-center gap-1.5">
             <Search :size="12" /> Search
           </label>
           <input
@@ -329,59 +346,40 @@ function clearFilters() {
           />
         </div>
 
-        <div class="md:col-span-4">
-          <label
-            class="text-xs text-[var(--color-text-muted)] mb-1.5 flex items-center gap-1.5"
-          >
-            <Calendar :size="12" /> Date range
+        <div>
+          <label class="text-xs text-[var(--color-text-muted)] mb-1.5 flex items-center gap-1.5">
+            <Calendar :size="12" /> From
           </label>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div class="min-w-0">
-              <span
-                class="block text-[10px] uppercase tracking-wider text-[var(--color-text-dim)] mb-1 sm:hidden"
-                >From</span
-              >
-              <input
-                v-model="dateFrom"
-                type="date"
-                class="input date-input"
-                aria-label="From date"
-              />
-            </div>
-            <div class="min-w-0">
-              <span
-                class="block text-[10px] uppercase tracking-wider text-[var(--color-text-dim)] mb-1 sm:hidden"
-                >To</span
-              >
-              <input
-                v-model="dateTo"
-                type="date"
-                class="input date-input"
-                aria-label="To date"
-              />
-            </div>
-          </div>
+          <input v-model="dateFrom" type="date" class="input date-input !w-36" aria-label="From date" />
+        </div>
+        <div>
+          <label class="text-xs text-[var(--color-text-muted)] mb-1.5 block">To</label>
+          <input v-model="dateTo" type="date" class="input date-input !w-36" aria-label="To date" />
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-[var(--color-border-soft)]">
+      <p v-if="storesError" class="text-xs text-[var(--color-danger)] mt-2.5 flex items-center gap-1">
+        <AlertCircle :size="12" /> {{ storesError }}
+      </p>
+
+      <div class="flex flex-wrap items-center gap-2 mt-3.5 pt-3.5 border-t border-[var(--color-border-soft)]">
         <span class="text-xs text-[var(--color-text-dim)] mr-1">Quick:</span>
-        <button class="chip hover:text-[var(--color-text)] transition" @click="setQuickRange(1)">
+        <button class="chip hover:text-[var(--color-text)] transition-colors" @click="setQuickRange(1)">
           Today
         </button>
-        <button class="chip hover:text-[var(--color-text)] transition" @click="setQuickRange(7)">
+        <button class="chip hover:text-[var(--color-text)] transition-colors" @click="setQuickRange(7)">
           Last 7 days
         </button>
-        <button class="chip hover:text-[var(--color-text)] transition" @click="setQuickRange(30)">
+        <button class="chip hover:text-[var(--color-text)] transition-colors" @click="setQuickRange(30)">
           Last 30 days
         </button>
-        <button class="chip hover:text-[var(--color-text)] transition" @click="setQuickRange(null)">
+        <button class="chip hover:text-[var(--color-text)] transition-colors" @click="setQuickRange(null)">
           All time
         </button>
         <div class="flex-1"></div>
         <button
           v-if="search || dateFrom || dateTo"
-          class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition"
+          class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
           @click="clearFilters"
         >
           Clear filters
@@ -389,58 +387,13 @@ function clearFilters() {
       </div>
     </section>
 
-    <section class="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-5">
-      <div class="card p-4">
-        <p class="text-xs text-[var(--color-text-muted)]">Bills</p>
-        <p class="text-2xl font-semibold text-[var(--color-text)] mt-1 tabular-nums">
-          {{ summary.count.toLocaleString() }}
-        </p>
-        <p class="text-xs text-[var(--color-text-dim)] mt-0.5">
-          Matching current filters
-        </p>
-      </div>
-      <div class="card p-4">
-        <p class="text-xs text-[var(--color-text-muted)]">
-          Total (this page)
-        </p>
-        <p class="text-2xl font-semibold text-[var(--color-text)] mt-1 tabular-nums">
-          {{ fmtMoney(summary.total) }}
-        </p>
-        <p class="text-xs text-[var(--color-text-dim)] mt-0.5">
-          Sum of {{ bills.length }} bills shown
-        </p>
-      </div>
-      <div class="card p-4 relative overflow-hidden">
-        <div
-          class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[var(--color-accent)]/50 to-transparent"
-        ></div>
-        <p class="text-xs text-[var(--color-text-muted)]">Today's bills</p>
-        <p class="text-2xl font-semibold text-[var(--color-text)] mt-1 tabular-nums">
-          <span v-if="loadingToday" class="text-[var(--color-text-dim)]">…</span>
-          <span v-else>{{ fmtMoney(todayTotal) }}</span>
-        </p>
-        <p class="text-xs text-[var(--color-text-dim)] mt-0.5">
-          {{ todayCount }} bill{{ todayCount === 1 ? '' : 's' }} today
-        </p>
-      </div>
-      <div class="card p-4">
-        <p class="text-xs text-[var(--color-text-muted)]">Today's discount</p>
-        <p class="text-2xl font-semibold text-[var(--color-text)] mt-1 tabular-nums">
-          <span v-if="loadingToday" class="text-[var(--color-text-dim)]">…</span>
-          <span v-else>{{ fmtMoney(todayDiscount) }}</span>
-        </p>
-        <p class="text-xs text-[var(--color-text-dim)] mt-0.5">
-          Total discount given today
-        </p>
-      </div>
-    </section>
-
+    <!-- table -->
     <section class="card overflow-hidden">
       <div
-        class="px-5 py-3 border-b border-[var(--color-border)] flex items-center justify-between"
+        class="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between"
       >
         <div class="flex items-center gap-2">
-          <Receipt :size="16" class="text-[var(--color-accent)]" />
+          <Receipt :size="15" class="text-[var(--color-accent)]" />
           <h2 class="text-sm font-medium">
             {{ selectedStore?.name || 'Bills' }}
             <span class="text-[var(--color-text-dim)]"
@@ -496,8 +449,8 @@ function clearFilters() {
             <template v-else-if="billsError">
               <tr>
                 <td colspan="10" class="px-4 sm:px-5 py-12 text-center">
-                  <AlertCircle :size="22" class="mx-auto text-[#fca5a5]" />
-                  <p class="mt-2 text-sm text-[#fca5a5]">{{ billsError }}</p>
+                  <AlertCircle :size="22" class="mx-auto text-[var(--color-danger)]" />
+                  <p class="mt-2 text-sm text-[var(--color-danger)]">{{ billsError }}</p>
                 </td>
               </tr>
             </template>
@@ -675,7 +628,7 @@ function clearFilters() {
                           <tr v-if="loadingItems[b.id]">
                             <td colspan="5" class="px-4 py-6 text-center text-[var(--color-text-dim)]">
                               <span class="inline-flex items-center gap-2">
-                                <span class="spinner" style="border-top-color: var(--color-accent); border-color: rgba(79,70,229,0.25)"></span>
+                                <span class="spinner" style="border-top-color: var(--color-accent); border-color: oklch(56% 0.2 258 / 0.25)"></span>
                                 Loading items…
                               </span>
                             </td>

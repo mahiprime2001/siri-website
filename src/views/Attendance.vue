@@ -514,11 +514,30 @@ function isOnline(d: AttendanceDevice): boolean {
 </script>
 
 <template>
-  <div class="p-4 md:p-6 space-y-4 max-w-6xl">
-    <!-- ============ header: store · dates · panel icons ============ -->
-    <div class="flex flex-wrap items-center gap-3">
+  <div class="p-4 sm:p-6 lg:p-8 space-y-4 max-w-6xl mx-auto">
+    <!-- page header -->
+    <header class="flex items-center justify-between gap-3 flex-wrap">
+      <div class="min-w-0">
+        <h1 class="page-title">Attendance</h1>
+        <p class="page-sub mt-0.5">Face check-ins across every shop.</p>
+      </div>
       <div class="flex items-center gap-2">
-        <StoreIcon :size="16" class="text-[var(--color-text-dim)]" />
+        <button class="btn btn-ghost !px-3" title="Members" @click="openDrawer('members')">
+          <Users :size="15" />
+          <span class="hidden sm:inline">Members</span>
+          <span class="count-badge">{{ employees.length }}</span>
+        </button>
+        <button class="btn btn-ghost !px-3" title="Devices" @click="openDrawer('devices')">
+          <Smartphone :size="15" />
+          <span class="hidden sm:inline">Devices</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- toolbar -->
+    <section class="card p-3.5 flex flex-wrap items-center gap-3">
+      <div class="flex items-center gap-2">
+        <StoreIcon :size="14" class="text-[var(--color-text-dim)]" />
         <select v-model="selectedStoreId" class="input !w-52">
           <option v-for="s in stores" :key="s.id" :value="s.id">
             {{ s.name || s.id }}
@@ -543,45 +562,33 @@ function isOnline(d: AttendanceDevice): boolean {
         <span class="text-[var(--color-text-dim)] text-sm">→</span>
         <input v-model="dateTo" type="date" class="input date-input !w-38" />
       </div>
-
-      <div class="ml-auto flex items-center gap-2">
-        <button class="btn btn-ghost !px-3" title="Members" @click="openDrawer('members')">
-          <Users :size="16" />
-          <span class="hidden sm:inline">Members</span>
-          <span class="count-badge">{{ employees.length }}</span>
-        </button>
-        <button class="btn btn-ghost !px-3" title="Devices" @click="openDrawer('devices')">
-          <Smartphone :size="16" />
-          <span class="hidden sm:inline">Devices</span>
-        </button>
-      </div>
-    </div>
+    </section>
 
     <div
       v-if="error"
-      class="card p-3 flex items-center gap-2 text-sm text-red-600 border-red-500/30"
+      class="card p-3 flex items-center gap-2 text-sm text-[var(--color-danger)] border-[oklch(56%_0.19_25_/_0.3)]"
     >
       <AlertCircle :size="16" />
       {{ error }}
     </div>
 
-    <!-- ============ stat tiles ============ -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <div class="card p-3.5">
+    <!-- stat rail -->
+    <div class="stat-rail grid-cols-2 sm:grid-cols-4">
+      <div class="stat-cell">
         <p class="stat-label">Employees</p>
         <p class="stat-value">{{ employees.filter((e) => e.status === 'active').length }}</p>
       </div>
-      <div class="card p-3.5">
+      <div class="stat-cell">
         <p class="stat-label">Present</p>
-        <p class="stat-value text-green-600">{{ presentCount }}</p>
+        <p class="stat-value" style="color: oklch(38% 0.12 155)">{{ presentCount }}</p>
       </div>
-      <div class="card p-3.5">
+      <div class="stat-cell">
         <p class="stat-label">Leaves</p>
-        <p class="stat-value text-amber-600">{{ totalLeaves }}</p>
+        <p class="stat-value" style="color: oklch(42% 0.13 60)">{{ totalLeaves }}</p>
       </div>
-      <div class="card p-3.5">
+      <div class="stat-cell">
         <p class="stat-label">Still in</p>
-        <p class="stat-value text-sky-600">{{ stillIn }}</p>
+        <p class="stat-value" style="color: var(--color-accent)">{{ stillIn }}</p>
       </div>
     </div>
 
@@ -935,7 +942,7 @@ function isOnline(d: AttendanceDevice): boolean {
 .preset-chip.active {
   border-color: var(--color-accent);
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-accent-ink);
 }
 
 .count-badge {
@@ -945,20 +952,6 @@ function isOnline(d: AttendanceDevice): boolean {
   background: var(--color-surface-2);
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-dim);
-}
-.stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1.3;
   font-variant-numeric: tabular-nums;
 }
 
