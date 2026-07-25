@@ -742,38 +742,38 @@ function isOnline(d: AttendanceDevice): boolean {
                           :key="d.date + i"
                           class="border-b border-[var(--color-border)]/60 last:border-0"
                         >
-                          <td class="px-6 py-2 w-36 tabular-nums text-[var(--color-text-muted)]">
+                          <td class="px-2 sm:px-6 py-2 w-16 sm:w-36 text-[11px] sm:text-sm tabular-nums text-[var(--color-text-muted)] whitespace-nowrap">
                             {{ i === 0 ? fmtDay(d.date) : '' }}
                           </td>
-                          <td class="px-4 py-2">
-                            <div v-if="sess.inRec" class="flex items-center gap-2">
+                          <td class="px-1.5 sm:px-4 py-2">
+                            <div v-if="sess.inRec" class="flex items-center gap-1.5 sm:gap-2">
                               <img
                                 v-if="sess.inRec.photo_url"
                                 :src="sess.inRec.photo_url"
                                 class="thumb"
                                 @click="photoPreview = sess.inRec.photo_url"
                               />
-                              <span class="tabular-nums text-green-600">IN {{ fmtTime(sess.inRec.ts) }}</span>
+                              <span class="tabular-nums text-green-600 whitespace-nowrap">{{ fmtTime(sess.inRec.ts) }}</span>
                             </div>
                             <span v-else class="text-[var(--color-text-dim)]">—</span>
                           </td>
-                          <td class="px-4 py-2">
-                            <div v-if="sess.outRec" class="flex items-center gap-2">
+                          <td class="px-1.5 sm:px-4 py-2">
+                            <div v-if="sess.outRec" class="flex items-center gap-1.5 sm:gap-2">
                               <img
                                 v-if="sess.outRec.photo_url"
                                 :src="sess.outRec.photo_url"
                                 class="thumb"
                                 @click="photoPreview = sess.outRec.photo_url"
                               />
-                              <span class="tabular-nums text-amber-600">OUT {{ fmtTime(sess.outRec.ts) }}</span>
+                              <span class="tabular-nums text-amber-600 whitespace-nowrap">{{ fmtTime(sess.outRec.ts) }}</span>
                             </div>
-                            <span v-else-if="isToday(d.date)" class="chip chip-success">
+                            <span v-else-if="isToday(d.date)" class="chip chip-success whitespace-nowrap">
                               <Clock :size="11" />
                               Still in
                             </span>
-                            <span v-else class="text-[var(--color-text-dim)]">no out</span>
+                            <span v-else class="text-[var(--color-text-dim)] whitespace-nowrap">no out</span>
                           </td>
-                          <td class="px-4 py-2 w-24 text-right tabular-nums text-[var(--color-text-muted)]">
+                          <td class="px-1.5 sm:px-4 py-2 w-12 sm:w-24 text-right tabular-nums text-[11px] sm:text-sm text-[var(--color-text-muted)] whitespace-nowrap">
                             {{ i === d.sessions.length - 1 ? dayHours(d) : '' }}
                           </td>
                         </tr>
@@ -1028,12 +1028,18 @@ function isOnline(d: AttendanceDevice): boolean {
   padding: 0.625rem 1rem;
 }
 .thumb {
-  height: 2.25rem;
-  width: 2.25rem;
+  height: 1.75rem;
+  width: 1.75rem;
   border-radius: 0.375rem;
   object-fit: cover;
   cursor: pointer;
   border: 1px solid var(--color-border);
+}
+@media (min-width: 40rem) {
+  .thumb {
+    height: 2.25rem;
+    width: 2.25rem;
+  }
 }
 
 .icon-action {
