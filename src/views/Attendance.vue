@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronRight,
   X,
+  Navigation,
 } from 'lucide-vue-next'
 import { format, parseISO } from 'date-fns'
 import type { RealtimeChannel } from '@supabase/supabase-js'
@@ -178,10 +179,12 @@ async function refresh() {
 
 async function loadEmployees() {
   try {
+    // Roaming employees (e.g. an auditor) show up at every store they can
+    // actually mark attendance at, not just the store their row belongs to.
     const { data, error: err } = await supabase
       .from('attendance_employees')
-      .select('id, store_id, name, status, enroll_status, photo_url, enrolled_at, created_at')
-      .eq('store_id', selectedStoreId.value)
+      .select('id, store_id, name, status, enroll_status, photo_url, enrolled_at, created_at, is_roaming')
+      .or(`store_id.eq.${selectedStoreId.value},is_roaming.eq.true`)
       .order('name', { ascending: true })
     if (err) throw err
     employees.value = (data ?? []) as AttendanceEmployee[]
@@ -377,6 +380,23 @@ async function reEnroll(emp: AttendanceEmployee) {
   const { error: err } = await supabase
     .from('attendance_employees')
     .update({ enroll_status: 'pending', face_embeddings: null })
+    .eq('id', emp.id)
+  if (err) error.value = err.message
+  await loadEmployees()
+}
+
+async function toggleRoaming(emp: AttendanceEmployee) {
+  const next = !emp.is_roaming
+  if (
+    next &&
+    !confirm(
+      `Make ${emp.name} roaming? They'll be able to mark attendance at every store's phone, not just this one — useful for auditors who visit multiple shops.`
+    )
+  )
+    return
+  const { error: err } = await supabase
+    .from('attendance_employees')
+    .update({ is_roaming: next })
     .eq('id', emp.id)
   if (err) error.value = err.message
   await loadEmployees()
@@ -636,7 +656,10 @@ function isOnline(d: AttendanceDevice): boolean {
                       {{ s.emp.name.charAt(0).toUpperCase() }}
                     </div>
                     <div class="min-w-0">
-                      <p class="font-medium truncate">{{ s.emp.name }}</p>
+                      <p class="font-medium truncate flex items-center gap-1.5">
+                        {{ s.emp.name }}
+                        <Navigation v-if="s.emp.is_roaming" :size="11" class="text-[var(--color-accent)] shrink-0" />
+                      </p>
                       <p v-if="s.emp.enroll_status !== 'enrolled'" class="text-[11px] text-amber-600">
                         Waiting for face scan
                       </p>
@@ -806,10 +829,16 @@ function isOnline(d: AttendanceDevice): boolean {
             </div>
             <div class="min-w-0 mr-auto">
               <p class="font-medium text-sm truncate">{{ e.name }}</p>
-              <span class="chip mt-0.5" :class="e.enroll_status === 'enrolled' ? 'chip-success' : 'chip-warn'">
-                <ScanFace :size="10" />
-                {{ e.enroll_status === 'enrolled' ? 'Enrolled' : 'Waiting for scan' }}
-              </span>
+              <div class="flex flex-wrap gap-1 mt-0.5">
+                <span class="chip" :class="e.enroll_status === 'enrolled' ? 'chip-success' : 'chip-warn'">
+                  <ScanFace :size="10" />
+                  {{ e.enroll_status === 'enrolled' ? 'Enrolled' : 'Waiting for scan' }}
+                </span>
+                <span v-if="e.is_roaming" class="chip" style="color: var(--color-accent); border-color: var(--color-accent)">
+                  <Navigation :size="10" />
+                  Roaming
+                </span>
+              </div>
             </div>
             <div class="flex flex-col gap-1.5 items-end">
               <div class="flex gap-1.5">
@@ -820,6 +849,14 @@ function isOnline(d: AttendanceDevice): boolean {
                   @click="reEnroll(e)"
                 >
                   <ScanFace :size="14" />
+                </button>
+                <button
+                  class="icon-action"
+                  :class="{ 'text-[var(--color-accent)]': e.is_roaming }"
+                  :title="e.is_roaming ? 'Remove roaming (back to this store only)' : 'Make roaming (any store, e.g. an auditor)'"
+                  @click="toggleRoaming(e)"
+                >
+                  <Navigation :size="14" />
                 </button>
                 <button
                   class="icon-action"

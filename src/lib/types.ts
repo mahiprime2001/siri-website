@@ -50,6 +50,7 @@ export interface AttendanceEmployee {
   photo_url: string | null
   enrolled_at: string | null
   created_at: string | null
+  is_roaming: boolean // can mark attendance at any store, not just store_id
 }
 
 export interface AttendanceRecord {
