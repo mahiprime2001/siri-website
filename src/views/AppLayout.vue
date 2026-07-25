@@ -94,6 +94,17 @@ function handleLogout() {
 .shell {
   min-height: 100dvh;
   display: flex;
+  /* Mobile: topbar stacked above content (tabbar is fixed, out of flow).
+     Desktop switches to a row below once the sidebar comes back — without
+     this, the topbar and content sit side-by-side on mobile too, and
+     min-height + default align-items:stretch turns the topbar's narrow
+     shrink-to-fit width into an empty full-height column on the left. */
+  flex-direction: column;
+}
+@media (min-width: 60rem) {
+  .shell {
+    flex-direction: row;
+  }
 }
 
 /* ---------- desktop sidebar ---------- */

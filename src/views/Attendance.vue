@@ -247,7 +247,18 @@ const summaries = computed<EmpSummary[]>(() => {
   const today = fmtDateInput(new Date())
   const rangeEnd = dateTo.value < today ? dateTo.value : today
 
-  return employees.value.map((emp) => {
+  return employees.value
+    .filter((emp) => {
+      // A roaming employee only shows up at a store other than their home
+      // store once they've actually scanned there — they're not "assigned"
+      // to every shop, so no point listing them with nothing but leaves.
+      if (emp.is_roaming && emp.store_id !== selectedStoreId.value) {
+        return (byEmp.get(emp.id) ?? []).length > 0
+      }
+      return true
+    })
+    .map((emp) => {
+    const awayFromHome = emp.is_roaming && emp.store_id !== selectedStoreId.value
     const recs = byEmp.get(emp.id) ?? []
     // group by date, pair in->out
     const dayMap = new Map<string, EmpDay>()
@@ -278,6 +289,9 @@ const summaries = computed<EmpSummary[]>(() => {
       totalDays = Math.round((dayMs(rangeEnd) - dayMs(start)) / 86_400_000) + 1
     }
     const daysPresent = days.length
+    // Away from home, only the days they actually showed up count — no
+    // absence tracking for a store they're not permanently assigned to.
+    if (awayFromHome) totalDays = daysPresent
     const leaves = Math.max(0, totalDays - daysPresent)
 
     // single-day columns
@@ -596,7 +610,7 @@ function isOnline(d: AttendanceDevice): boolean {
     <div class="stat-rail grid-cols-2 sm:grid-cols-4">
       <div class="stat-cell">
         <p class="stat-label">Employees</p>
-        <p class="stat-value">{{ employees.filter((e) => e.status === 'active').length }}</p>
+        <p class="stat-value">{{ summaries.filter((s) => s.emp.status === 'active').length }}</p>
       </div>
       <div class="stat-cell">
         <p class="stat-label">Present</p>
@@ -626,8 +640,8 @@ function isOnline(d: AttendanceDevice): boolean {
           <thead>
             <tr class="thead-row">
               <th class="th">Employee</th>
-              <th class="th">Present</th>
-              <th class="th">Leaves</th>
+              <th class="th" :class="{ 'hidden sm:table-cell': singleDay }">Present</th>
+              <th class="th" :class="{ 'hidden sm:table-cell': singleDay }">Leaves</th>
               <th v-if="singleDay" class="th">IN</th>
               <th v-if="singleDay" class="th">OUT</th>
               <th v-if="singleDay" class="th hidden md:table-cell">Hours</th>
@@ -669,12 +683,12 @@ function isOnline(d: AttendanceDevice): boolean {
                     </div>
                   </div>
                 </td>
-                <td class="td tabular-nums">
+                <td class="td tabular-nums" :class="{ 'hidden sm:table-cell': singleDay }">
                   <span :class="s.daysPresent ? 'text-green-600' : 'text-[var(--color-text-dim)]'">
                     {{ s.daysPresent }}<span v-if="!singleDay" class="text-[var(--color-text-dim)]"> / {{ s.totalDays }}</span>
                   </span>
                 </td>
-                <td class="td tabular-nums">
+                <td class="td tabular-nums" :class="{ 'hidden sm:table-cell': singleDay }">
                   <span :class="s.leaves ? 'text-amber-600' : 'text-[var(--color-text-dim)]'">{{ s.leaves }}</span>
                 </td>
                 <td v-if="singleDay" class="td">
