@@ -61,6 +61,13 @@ const copiedCode = ref<string | null>(null)
 const selectedStore = computed(() =>
   stores.value.find((s) => s.id === selectedStoreId.value)
 )
+// Members drawer: home-store roster only. `employees` also carries in
+// roaming employees from every other store so they can appear on the
+// attendance table once they've actually scanned here — but that means
+// they shouldn't clutter every OTHER store's management list too.
+const membersList = computed(() =>
+  employees.value.filter((e) => e.store_id === selectedStoreId.value)
+)
 const singleDay = computed(() => dateFrom.value === dateTo.value)
 
 // ---------------- loading ----------------
@@ -586,7 +593,7 @@ function isOnline(d: AttendanceDevice): boolean {
         <button class="btn btn-ghost !px-3" title="Members" @click="openDrawer('members')">
           <Users :size="15" />
           <span class="hidden sm:inline">Members</span>
-          <span class="count-badge">{{ employees.length }}</span>
+          <span class="count-badge">{{ membersList.length }}</span>
         </button>
         <button class="btn btn-ghost !px-3" title="Devices" @click="openDrawer('devices')">
           <Smartphone :size="15" />
@@ -658,7 +665,7 @@ function isOnline(d: AttendanceDevice): boolean {
       <div v-if="loading" class="p-8 text-center text-sm text-[var(--color-text-dim)]">
         Loading…
       </div>
-      <div v-else-if="!employees.length" class="p-10 text-center text-[var(--color-text-dim)]">
+      <div v-else-if="!summaries.length" class="p-10 text-center text-[var(--color-text-dim)]">
         <Users :size="28" class="mx-auto mb-2 opacity-60" />
         No employees at {{ selectedStore?.name || 'this shop' }} yet — add them from Members (top right).
       </div>
@@ -852,7 +859,7 @@ function isOnline(d: AttendanceDevice): boolean {
           </p>
 
           <div
-            v-for="e in employees"
+            v-for="e in membersList"
             :key="e.id"
             class="card p-3 flex items-center gap-3"
           >
