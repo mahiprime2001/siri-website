@@ -13,8 +13,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  ChevronDown,
-  ChevronRight,
   X,
   Navigation,
 } from 'lucide-vue-next'
@@ -43,7 +41,6 @@ const dateTo = ref(fmtDateInput(new Date()))
 const employees = ref<AttendanceEmployee[]>([])
 const records = ref<AttendanceRecord[]>([])
 const loading = ref(false)
-const expanded = ref<Record<string, boolean>>({})
 const photoPreview = ref<string | null>(null)
 
 type Drawer = 'members' | 'devices' | null
@@ -180,7 +177,6 @@ watch([dateFrom, dateTo], () => loadRecords())
 async function refresh() {
   if (!selectedStoreId.value) return
   error.value = null
-  expanded.value = {}
   await Promise.all([loadEmployees(), loadRecords()])
 }
 
@@ -236,9 +232,6 @@ interface EmpSummary {
   totalDays: number
   leaves: number
   days: EmpDay[] // newest first
-  // single-day convenience
-  firstIn: AttendanceRecord | null
-  lastOut: AttendanceRecord | null
   hours: string
 }
 
@@ -301,21 +294,13 @@ const summaries = computed<EmpSummary[]>(() => {
     if (awayFromHome) totalDays = daysPresent
     const leaves = Math.max(0, totalDays - daysPresent)
 
-    // single-day columns
-    const todaySessions = days[0]?.sessions ?? []
-    const firstIn = todaySessions.find((s) => s.inRec)?.inRec ?? null
-    const outs = todaySessions.filter((s) => s.outRec)
-    const lastOut = outs.length ? outs[outs.length - 1].outRec : null
-
     return {
       emp,
       daysPresent,
       totalDays,
       leaves,
       days,
-      firstIn,
-      lastOut,
-      hours: days[0] ? dayHours(days[0]) : '—',
+      hours: totalHours(days),
     }
   })
 })
@@ -338,6 +323,13 @@ const stillIn = computed(() => {
   return n
 })
 
+function fmtMs(ms: number): string {
+  if (ms <= 0) return '—'
+  const h = Math.floor(ms / 3_600_000)
+  const m = Math.round((ms % 3_600_000) / 60_000)
+  return h ? `${h}h ${m}m` : `${m}m`
+}
+
 function dayHours(day: EmpDay): string {
   let ms = 0
   for (const s of day.sessions) {
@@ -345,10 +337,19 @@ function dayHours(day: EmpDay): string {
       ms += new Date(s.outRec.ts).getTime() - new Date(s.inRec.ts).getTime()
     }
   }
-  if (ms <= 0) return '—'
-  const h = Math.floor(ms / 3_600_000)
-  const m = Math.round((ms % 3_600_000) / 60_000)
-  return h ? `${h}h ${m}m` : `${m}m`
+  return fmtMs(ms)
+}
+
+function totalHours(days: EmpDay[]): string {
+  let ms = 0
+  for (const d of days) {
+    for (const s of d.sessions) {
+      if (s.inRec && s.outRec) {
+        ms += new Date(s.outRec.ts).getTime() - new Date(s.inRec.ts).getTime()
+      }
+    }
+  }
+  return fmtMs(ms)
 }
 
 function fmtTime(s: string | null | undefined): string {
@@ -660,165 +661,113 @@ function isOnline(d: AttendanceDevice): boolean {
       </div>
     </div>
 
-    <!-- ============ per-employee table ============ -->
-    <div class="card overflow-hidden">
-      <div v-if="loading" class="p-8 text-center text-sm text-[var(--color-text-dim)]">
-        Loading…
-      </div>
-      <div v-else-if="!summaries.length" class="p-10 text-center text-[var(--color-text-dim)]">
-        <Users :size="28" class="mx-auto mb-2 opacity-60" />
-        No employees at {{ selectedStore?.name || 'this shop' }} yet — add them from Members (top right).
-      </div>
-      <div v-else class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="thead-row">
-              <th class="th">Employee</th>
-              <th class="th" :class="{ 'hidden sm:table-cell': singleDay }">Present</th>
-              <th class="th" :class="{ 'hidden sm:table-cell': singleDay }">Leaves</th>
-              <th v-if="singleDay" class="th">IN</th>
-              <th v-if="singleDay" class="th">OUT</th>
-              <th v-if="singleDay" class="th hidden md:table-cell">Hours</th>
-              <th class="th w-10"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <template v-for="s in summaries" :key="s.emp.id">
-              <tr
-                class="body-row cursor-pointer"
-                :class="{ 'opacity-50': s.emp.status !== 'active' }"
-                @click="expanded[s.emp.id] = !expanded[s.emp.id]"
-              >
-                <td class="td">
-                  <div class="flex items-center gap-3">
-                    <img
-                      v-if="s.emp.photo_url"
-                      :src="s.emp.photo_url"
-                      class="h-9 w-9 rounded-full object-cover border border-[var(--color-border)]"
-                      @click.stop="photoPreview = s.emp.photo_url"
-                    />
-                    <div
-                      v-else
-                      class="h-9 w-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-xs font-semibold"
-                    >
-                      {{ s.emp.name.charAt(0).toUpperCase() }}
-                    </div>
-                    <div class="min-w-0">
-                      <p class="font-medium truncate flex items-center gap-1.5">
-                        {{ s.emp.name }}
-                        <Navigation v-if="s.emp.is_roaming" :size="11" class="text-[var(--color-accent)] shrink-0" />
-                      </p>
-                      <p v-if="s.emp.enroll_status !== 'enrolled'" class="text-[11px] text-amber-600">
-                        Waiting for face scan
-                      </p>
-                      <p v-else-if="s.emp.status !== 'active'" class="text-[11px] text-red-600">
-                        Disabled
-                      </p>
-                    </div>
-                  </div>
-                </td>
-                <td class="td tabular-nums" :class="{ 'hidden sm:table-cell': singleDay }">
-                  <span :class="s.daysPresent ? 'text-green-600' : 'text-[var(--color-text-dim)]'">
-                    {{ s.daysPresent }}<span v-if="!singleDay" class="text-[var(--color-text-dim)]"> / {{ s.totalDays }}</span>
-                  </span>
-                </td>
-                <td class="td tabular-nums" :class="{ 'hidden sm:table-cell': singleDay }">
-                  <span :class="s.leaves ? 'text-amber-600' : 'text-[var(--color-text-dim)]'">{{ s.leaves }}</span>
-                </td>
-                <td v-if="singleDay" class="td">
-                  <div v-if="s.firstIn" class="flex items-center gap-2">
-                    <img
-                      v-if="s.firstIn.photo_url"
-                      :src="s.firstIn.photo_url"
-                      class="thumb"
-                      @click.stop="photoPreview = s.firstIn.photo_url"
-                    />
-                    <span class="tabular-nums text-green-600">{{ fmtTime(s.firstIn.ts) }}</span>
-                  </div>
-                  <span v-else class="text-[var(--color-text-dim)]">—</span>
-                </td>
-                <td v-if="singleDay" class="td">
-                  <div v-if="s.lastOut" class="flex items-center gap-2">
-                    <img
-                      v-if="s.lastOut.photo_url"
-                      :src="s.lastOut.photo_url"
-                      class="thumb"
-                      @click.stop="photoPreview = s.lastOut.photo_url"
-                    />
-                    <span class="tabular-nums text-amber-600">{{ fmtTime(s.lastOut.ts) }}</span>
-                  </div>
-                  <span v-else-if="s.firstIn && isToday(dateFrom)" class="chip chip-success">
-                    <Clock :size="11" />
-                    Still in
-                  </span>
-                  <span v-else class="text-[var(--color-text-dim)]">—</span>
-                </td>
-                <td v-if="singleDay" class="td hidden md:table-cell tabular-nums text-[var(--color-text-muted)]">
-                  {{ s.hours }}
-                </td>
-                <td class="td text-right text-[var(--color-text-dim)]">
-                  <ChevronDown v-if="expanded[s.emp.id]" :size="16" />
-                  <ChevronRight v-else :size="16" />
-                </td>
-              </tr>
+    <!-- ============ per-employee cards ============ -->
+    <div v-if="loading" class="card p-8 text-center text-sm text-[var(--color-text-dim)]">
+      Loading…
+    </div>
+    <div v-else-if="!summaries.length" class="card p-10 text-center text-[var(--color-text-dim)]">
+      <Users :size="28" class="mx-auto mb-2 opacity-60" />
+      No employees at {{ selectedStore?.name || 'this shop' }} yet — add them from Members (top right).
+    </div>
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div
+        v-for="s in summaries"
+        :key="s.emp.id"
+        class="card p-4"
+        :class="{ 'opacity-60': s.emp.status !== 'active' }"
+      >
+        <!-- header: who, and their total hours for the period -->
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <img
+              v-if="s.emp.photo_url"
+              :src="s.emp.photo_url"
+              class="h-10 w-10 rounded-full object-cover border border-[var(--color-border)] shrink-0 cursor-pointer"
+              @click="photoPreview = s.emp.photo_url"
+            />
+            <div
+              v-else
+              class="h-10 w-10 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-sm font-semibold shrink-0"
+            >
+              {{ s.emp.name.charAt(0).toUpperCase() }}
+            </div>
+            <div class="min-w-0">
+              <p class="font-medium truncate flex items-center gap-1.5">
+                {{ s.emp.name }}
+                <Navigation v-if="s.emp.is_roaming" :size="11" class="text-[var(--color-accent)] shrink-0" />
+              </p>
+              <p v-if="s.emp.enroll_status !== 'enrolled'" class="text-[11px] text-amber-600">
+                Waiting for face scan
+              </p>
+              <p v-else-if="s.emp.status !== 'active'" class="text-[11px] text-red-600">
+                Disabled
+              </p>
+              <p v-else-if="!singleDay" class="text-[11px] text-[var(--color-text-dim)]">
+                {{ s.daysPresent }}/{{ s.totalDays }} present
+                <span v-if="s.leaves"> · {{ s.leaves }} leave{{ s.leaves === 1 ? '' : 's' }}</span>
+              </p>
+            </div>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-[10px] uppercase tracking-wide text-[var(--color-text-dim)]">Hours</p>
+            <p class="font-semibold tabular-nums">{{ s.hours }}</p>
+          </div>
+        </div>
 
-              <!-- expanded: every day, every session, with photos -->
-              <tr v-if="expanded[s.emp.id]" class="body-row">
-                <td :colspan="singleDay ? 7 : 4" class="!p-0 bg-[var(--color-surface-2)]/30">
-                  <div v-if="!s.days.length" class="px-6 py-4 text-sm text-[var(--color-text-dim)]">
-                    No attendance in this period.
-                  </div>
-                  <table v-else class="w-full text-sm">
-                    <tbody>
-                      <template v-for="d in s.days" :key="d.date">
-                        <tr
-                          v-for="(sess, i) in d.sessions"
-                          :key="d.date + i"
-                          class="border-b border-[var(--color-border)]/60 last:border-0"
-                        >
-                          <td class="px-2 sm:px-6 py-2 w-16 sm:w-36 text-[11px] sm:text-sm tabular-nums text-[var(--color-text-muted)] whitespace-nowrap">
-                            {{ i === 0 ? fmtDay(d.date) : '' }}
-                          </td>
-                          <td class="px-1.5 sm:px-4 py-2">
-                            <div v-if="sess.inRec" class="flex items-center gap-1.5 sm:gap-2">
-                              <img
-                                v-if="sess.inRec.photo_url"
-                                :src="sess.inRec.photo_url"
-                                class="thumb"
-                                @click="photoPreview = sess.inRec.photo_url"
-                              />
-                              <span class="tabular-nums text-green-600 whitespace-nowrap">{{ fmtTime(sess.inRec.ts) }}</span>
-                            </div>
-                            <span v-else class="text-[var(--color-text-dim)]">—</span>
-                          </td>
-                          <td class="px-1.5 sm:px-4 py-2">
-                            <div v-if="sess.outRec" class="flex items-center gap-1.5 sm:gap-2">
-                              <img
-                                v-if="sess.outRec.photo_url"
-                                :src="sess.outRec.photo_url"
-                                class="thumb"
-                                @click="photoPreview = sess.outRec.photo_url"
-                              />
-                              <span class="tabular-nums text-amber-600 whitespace-nowrap">{{ fmtTime(sess.outRec.ts) }}</span>
-                            </div>
-                            <span v-else-if="isToday(d.date)" class="chip chip-success whitespace-nowrap">
-                              <Clock :size="11" />
-                              Still in
-                            </span>
-                            <span v-else class="text-[var(--color-text-dim)] whitespace-nowrap">no out</span>
-                          </td>
-                          <td class="px-1.5 sm:px-4 py-2 w-12 sm:w-24 text-right tabular-nums text-[11px] sm:text-sm text-[var(--color-text-muted)] whitespace-nowrap">
-                            {{ i === d.sessions.length - 1 ? dayHours(d) : '' }}
-                          </td>
-                        </tr>
-                      </template>
-                    </tbody>
-                  </table>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
+        <!-- every day, every session — fully shown, no dropdown -->
+        <div v-if="!s.days.length" class="text-sm text-[var(--color-text-dim)] py-1.5">
+          No attendance in this period.
+        </div>
+        <div v-else class="space-y-3">
+          <div v-for="d in s.days" :key="d.date">
+            <div class="flex items-center justify-between mb-1">
+              <p v-if="!singleDay" class="text-[11px] font-medium text-[var(--color-text-dim)]">
+                {{ fmtDay(d.date) }}
+              </p>
+              <span v-else />
+              <p v-if="!singleDay && d.sessions.length" class="text-[11px] tabular-nums text-[var(--color-text-dim)]">
+                {{ dayHours(d) }}
+              </p>
+            </div>
+            <div
+              v-for="(sess, i) in d.sessions"
+              :key="d.date + i"
+              class="grid grid-cols-2 gap-2 rounded-lg border border-[var(--color-border)] p-2"
+              :class="{ 'mt-1.5': i > 0 }"
+            >
+              <div class="min-w-0">
+                <p class="text-[10px] uppercase tracking-wide text-[var(--color-text-dim)] mb-1">In</p>
+                <div v-if="sess.inRec" class="flex items-center gap-1.5">
+                  <img
+                    v-if="sess.inRec.photo_url"
+                    :src="sess.inRec.photo_url"
+                    class="thumb"
+                    @click="photoPreview = sess.inRec.photo_url"
+                  />
+                  <span class="tabular-nums text-green-600 text-sm">{{ fmtTime(sess.inRec.ts) }}</span>
+                </div>
+                <span v-else class="text-[var(--color-text-dim)] text-sm">—</span>
+              </div>
+              <div class="min-w-0">
+                <p class="text-[10px] uppercase tracking-wide text-[var(--color-text-dim)] mb-1">Out</p>
+                <div v-if="sess.outRec" class="flex items-center gap-1.5">
+                  <img
+                    v-if="sess.outRec.photo_url"
+                    :src="sess.outRec.photo_url"
+                    class="thumb"
+                    @click="photoPreview = sess.outRec.photo_url"
+                  />
+                  <span class="tabular-nums text-amber-600 text-sm">{{ fmtTime(sess.outRec.ts) }}</span>
+                </div>
+                <span v-else-if="isToday(d.date)" class="chip chip-success">
+                  <Clock :size="11" />
+                  Still in
+                </span>
+                <span v-else class="text-[var(--color-text-dim)] text-sm">no out</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1040,27 +989,6 @@ function isOnline(d: AttendanceDevice): boolean {
   font-variant-numeric: tabular-nums;
 }
 
-.thead-row {
-  text-align: left;
-  font-size: 0.6875rem;
-  color: var(--color-text-dim);
-  border-bottom: 1px solid var(--color-border);
-}
-.th {
-  padding: 0.625rem 1rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.body-row {
-  border-bottom: 1px solid var(--color-border);
-}
-.body-row:last-child {
-  border-bottom: none;
-}
-.td {
-  padding: 0.625rem 1rem;
-}
 .thumb {
   height: 1.75rem;
   width: 1.75rem;
