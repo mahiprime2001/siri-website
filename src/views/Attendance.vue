@@ -52,6 +52,7 @@ const loadingMembers = ref(false)
 const todayRecordsAll = ref<{ employee_id: string; type: string }[]>([])
 const newNameByStore = ref<Record<string, string>>({})
 const addingEmployeeFor = ref<string | null>(null)
+const addOpenFor = ref<Record<string, boolean>>({})
 
 // devices drawer
 const devices = ref<AttendanceDevice[]>([])
@@ -400,6 +401,7 @@ async function addEmployeeTo(storeId: string) {
     })
     if (err) throw err
     newNameByStore.value[storeId] = ''
+    addOpenFor.value[storeId] = false
     await loadAllMembers()
     if (storeId === selectedStoreId.value) await loadEmployees()
   } catch (e) {
@@ -841,13 +843,22 @@ function isOnline(d: AttendanceDevice): boolean {
             <div class="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--color-border)]">
               <StoreIcon :size="14" class="text-[var(--color-text-dim)]" />
               <p class="text-sm font-semibold mr-auto truncate">{{ s.name || s.id }}</p>
+              <button
+                class="icon-action"
+                :class="{ 'text-[var(--color-accent)]': addOpenFor[s.id] }"
+                title="Add employee"
+                @click="addOpenFor[s.id] = !addOpenFor[s.id]"
+              >
+                <Plus :size="15" />
+              </button>
             </div>
 
-            <div class="flex gap-2 px-3 py-2.5 border-b border-[var(--color-border)]">
+            <div v-if="addOpenFor[s.id]" class="flex gap-2 px-3 py-2.5 border-b border-[var(--color-border)]">
               <input
                 v-model="newNameByStore[s.id]"
                 class="input"
                 placeholder="Employee name"
+                autofocus
                 @keyup.enter="addEmployeeTo(s.id)"
               />
               <button
