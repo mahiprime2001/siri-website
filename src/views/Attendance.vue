@@ -46,9 +46,12 @@ const photoPreview = ref<string | null>(null)
 type Drawer = 'members' | 'devices' | null
 const drawer = ref<Drawer>(null)
 
-// members drawer
-const newName = ref('')
-const addingEmployee = ref(false)
+// members drawer — all stores at once, grouped, same pattern as devices
+const allMembers = ref<AttendanceEmployee[]>([])
+const loadingMembers = ref(false)
+const todayRecordsAll = ref<{ employee_id: string; type: string }[]>([])
+const newNameByStore = ref<Record<string, string>>({})
+const addingEmployeeFor = ref<string | null>(null)
 
 // devices drawer
 const devices = ref<AttendanceDevice[]>([])
@@ -58,19 +61,27 @@ const copiedCode = ref<string | null>(null)
 const selectedStore = computed(() =>
   stores.value.find((s) => s.id === selectedStoreId.value)
 )
-// Members drawer: home-store roster only. `employees` also carries in
-// roaming employees from every other store so they can appear on the
-// attendance table once they've actually scanned here — but that means
-// they shouldn't clutter every OTHER store's management list too.
-const membersList = computed(() =>
-  employees.value.filter((e) => e.store_id === selectedStoreId.value)
-)
 const singleDay = computed(() => dateFrom.value === dateTo.value)
+
+const membersByStore = computed(() => {
+  const map: Record<string, AttendanceEmployee[]> = {}
+  for (const e of allMembers.value) {
+    ;(map[e.store_id] ??= []).push(e)
+  }
+  return map
+})
+
+const presentTodayIds = computed(() => {
+  const set = new Set<string>()
+  for (const r of todayRecordsAll.value) set.add(r.employee_id)
+  return set
+})
 
 // ---------------- loading ----------------
 
 onMounted(() => {
   loadStores()
+  loadAllMembers()
   subscribeDevices()
 })
 
@@ -375,25 +386,26 @@ function isToday(date: string): boolean {
 
 // ---------------- members drawer actions ----------------
 
-async function addEmployee() {
-  const name = newName.value.trim()
-  if (!name || !selectedStoreId.value) return
-  addingEmployee.value = true
+async function addEmployeeTo(storeId: string) {
+  const name = (newNameByStore.value[storeId] ?? '').trim()
+  if (!name) return
+  addingEmployeeFor.value = storeId
   error.value = null
   try {
     const { error: err } = await supabase.from('attendance_employees').insert({
-      store_id: selectedStoreId.value,
+      store_id: storeId,
       name,
       status: 'active',
       enroll_status: 'pending',
     })
     if (err) throw err
-    newName.value = ''
-    await loadEmployees()
+    newNameByStore.value[storeId] = ''
+    await loadAllMembers()
+    if (storeId === selectedStoreId.value) await loadEmployees()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to add employee'
   } finally {
-    addingEmployee.value = false
+    addingEmployeeFor.value = null
   }
 }
 
@@ -404,7 +416,7 @@ async function reEnroll(emp: AttendanceEmployee) {
     .update({ enroll_status: 'pending', face_embeddings: null })
     .eq('id', emp.id)
   if (err) error.value = err.message
-  await loadEmployees()
+  await Promise.all([loadAllMembers(), loadEmployees()])
 }
 
 async function toggleRoaming(emp: AttendanceEmployee) {
@@ -421,7 +433,7 @@ async function toggleRoaming(emp: AttendanceEmployee) {
     .update({ is_roaming: next })
     .eq('id', emp.id)
   if (err) error.value = err.message
-  await loadEmployees()
+  await Promise.all([loadAllMembers(), loadEmployees()])
 }
 
 async function toggleEmployee(emp: AttendanceEmployee) {
@@ -433,7 +445,7 @@ async function toggleEmployee(emp: AttendanceEmployee) {
     .eq('id', emp.id)
   if (err) error.value = err.message
   else if (next === 'disabled') await autoCloseOpenSession(emp)
-  await loadEmployees()
+  await Promise.all([loadAllMembers(), loadEmployees()])
 }
 
 /** Disabling blocks the kiosk from ever letting them post the matching OUT,
@@ -483,7 +495,7 @@ async function deleteEmployee(emp: AttendanceEmployee) {
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to delete employee'
   }
-  await refresh()
+  await Promise.all([refresh(), loadAllMembers()])
 }
 
 // ---------------- devices drawer actions ----------------
@@ -491,6 +503,36 @@ async function deleteEmployee(emp: AttendanceEmployee) {
 function openDrawer(d: Exclude<Drawer, null>) {
   drawer.value = d
   if (d === 'devices') loadDevices()
+  else if (d === 'members') loadAllMembers()
+}
+
+async function loadAllMembers() {
+  loadingMembers.value = true
+  try {
+    const today = fmtDateInput(new Date())
+    const [empRes, recRes] = await Promise.all([
+      supabase
+        .from('attendance_employees')
+        .select(
+          'id, store_id, name, status, enroll_status, photo_url, enrolled_at, created_at, is_roaming'
+        )
+        .order('name', { ascending: true }),
+      supabase
+        .from('attendance_records')
+        .select('employee_id, type')
+        .gte('ts', `${today}T00:00:00`)
+        .lte('ts', `${today}T23:59:59`),
+    ])
+    if (empRes.error) throw empRes.error
+    if (recRes.error) throw recRes.error
+    allMembers.value = (empRes.data ?? []) as AttendanceEmployee[]
+    todayRecordsAll.value =
+      (recRes.data ?? []) as { employee_id: string; type: string }[]
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to load members'
+  } finally {
+    loadingMembers.value = false
+  }
 }
 
 async function loadDevices() {
@@ -594,7 +636,7 @@ function isOnline(d: AttendanceDevice): boolean {
         <button class="btn btn-ghost !px-3" title="Members" @click="openDrawer('members')">
           <Users :size="15" />
           <span class="hidden sm:inline">Members</span>
-          <span class="count-badge">{{ membersList.length }}</span>
+          <span class="count-badge">{{ allMembers.length }}</span>
         </button>
         <button class="btn btn-ghost !px-3" title="Devices" @click="openDrawer('devices')">
           <Smartphone :size="15" />
@@ -782,96 +824,121 @@ function isOnline(d: AttendanceDevice): boolean {
         >
           <component :is="drawer === 'members' ? Users : Smartphone" :size="17" />
           <h2 class="font-semibold mr-auto">
-            {{ drawer === 'members' ? `Members · ${selectedStore?.name}` : 'Devices · All shops' }}
+            {{ drawer === 'members' ? 'Members · All shops' : 'Devices · All shops' }}
           </h2>
           <button class="btn btn-ghost !p-2" @click="drawer = null">
             <X :size="16" />
           </button>
         </div>
 
-        <!-- members -->
-        <div v-if="drawer === 'members'" class="p-4 space-y-3">
-          <div class="flex gap-2">
-            <input
-              v-model="newName"
-              class="input"
-              placeholder="Employee name"
-              @keyup.enter="addEmployee"
-            />
-            <button class="btn btn-primary shrink-0" :disabled="addingEmployee || !newName.trim()" @click="addEmployee">
-              <Plus :size="15" />
-              Add
-            </button>
+        <!-- members: every shop, grouped -->
+        <div v-if="drawer === 'members'" class="p-4 space-y-4">
+          <div v-if="loadingMembers" class="p-6 text-center text-sm text-[var(--color-text-dim)]">
+            Loading…
           </div>
-          <p class="text-xs text-[var(--color-text-dim)]">
-            After adding, the shop phone shows an ADD popup for this person's face.
-          </p>
 
-          <div
-            v-for="e in membersList"
-            :key="e.id"
-            class="card p-3 flex items-center gap-3"
-          >
-            <img
-              v-if="e.photo_url"
-              :src="e.photo_url"
-              class="h-10 w-10 rounded-full object-cover border border-[var(--color-border)] cursor-pointer"
-              @click="photoPreview = e.photo_url"
-            />
-            <div
-              v-else
-              class="h-10 w-10 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-sm font-semibold"
+          <div v-for="s in stores" v-else :key="s.id" class="card overflow-hidden">
+            <div class="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--color-border)]">
+              <StoreIcon :size="14" class="text-[var(--color-text-dim)]" />
+              <p class="text-sm font-semibold mr-auto truncate">{{ s.name || s.id }}</p>
+            </div>
+
+            <div class="flex gap-2 px-3 py-2.5 border-b border-[var(--color-border)]">
+              <input
+                v-model="newNameByStore[s.id]"
+                class="input"
+                placeholder="Employee name"
+                @keyup.enter="addEmployeeTo(s.id)"
+              />
+              <button
+                class="btn btn-primary shrink-0"
+                :disabled="addingEmployeeFor === s.id || !newNameByStore[s.id]?.trim()"
+                @click="addEmployeeTo(s.id)"
+              >
+                <Plus :size="15" />
+                Add
+              </button>
+            </div>
+
+            <p
+              v-if="!(membersByStore[s.id] ?? []).length"
+              class="px-3 py-3 text-xs text-[var(--color-text-dim)]"
             >
-              {{ e.name.charAt(0).toUpperCase() }}
-            </div>
-            <div class="min-w-0 mr-auto">
-              <p class="font-medium text-sm truncate">{{ e.name }}</p>
-              <div class="flex flex-wrap gap-1 mt-0.5">
-                <span class="chip" :class="e.enroll_status === 'enrolled' ? 'chip-success' : 'chip-warn'">
-                  <ScanFace :size="10" />
-                  {{ e.enroll_status === 'enrolled' ? 'Enrolled' : 'Waiting for scan' }}
-                </span>
-                <span v-if="e.is_roaming" class="chip" style="color: var(--color-accent); border-color: var(--color-accent)">
-                  <Navigation :size="10" />
-                  Roaming
-                </span>
+              No employees yet — add one above.
+            </p>
+            <div
+              v-for="e in membersByStore[s.id] ?? []"
+              :key="e.id"
+              class="flex items-center gap-3 px-3 py-2.5 border-b border-[var(--color-border)] last:border-0"
+            >
+              <img
+                v-if="e.photo_url"
+                :src="e.photo_url"
+                class="h-10 w-10 rounded-full object-cover border border-[var(--color-border)] cursor-pointer shrink-0"
+                @click="photoPreview = e.photo_url"
+              />
+              <div
+                v-else
+                class="h-10 w-10 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-sm font-semibold shrink-0"
+              >
+                {{ e.name.charAt(0).toUpperCase() }}
               </div>
-            </div>
-            <div class="flex flex-col gap-1.5 items-end">
-              <div class="flex gap-1.5">
-                <button
-                  v-if="e.enroll_status === 'enrolled'"
-                  class="icon-action"
-                  title="Re-enroll face"
-                  @click="reEnroll(e)"
-                >
-                  <ScanFace :size="14" />
-                </button>
-                <button
-                  class="icon-action"
-                  :class="{ 'text-[var(--color-accent)]': e.is_roaming }"
-                  :title="e.is_roaming ? 'Remove roaming (back to this store only)' : 'Make roaming (any store, e.g. an auditor)'"
-                  @click="toggleRoaming(e)"
-                >
-                  <Navigation :size="14" />
-                </button>
-                <button
-                  class="icon-action"
-                  :title="e.status === 'active' ? 'Disable' : 'Enable'"
-                  @click="toggleEmployee(e)"
-                >
-                  <UserX v-if="e.status === 'active'" :size="14" />
-                  <UserCheck v-else :size="14" />
-                </button>
-                <button
-                  class="icon-action danger"
-                  title="Delete permanently"
-                  @click="deleteEmployee(e)"
-                >
-                  <Trash2 :size="14" />
-                </button>
+              <div class="min-w-0 mr-auto">
+                <p class="font-medium text-sm truncate">{{ e.name }}</p>
+                <div class="flex flex-wrap gap-1 mt-0.5">
+                  <span class="chip" :class="e.enroll_status === 'enrolled' ? 'chip-success' : 'chip-warn'">
+                    <ScanFace :size="10" />
+                    {{ e.enroll_status === 'enrolled' ? 'Enrolled' : 'Waiting for scan' }}
+                  </span>
+                  <span
+                    v-if="e.status === 'active'"
+                    class="chip"
+                    :class="presentTodayIds.has(e.id) ? 'chip-success' : 'chip-danger'"
+                  >
+                    {{ presentTodayIds.has(e.id) ? 'Present' : 'Absent' }}
+                  </span>
+                  <span v-if="e.is_roaming" class="chip" style="color: var(--color-accent); border-color: var(--color-accent)">
+                    <Navigation :size="10" />
+                    Roaming
+                  </span>
+                </div>
               </div>
-              <span v-if="e.status !== 'active'" class="chip chip-danger">Disabled</span>
+              <div class="flex flex-col gap-1.5 items-end shrink-0">
+                <div class="flex gap-1.5">
+                  <button
+                    v-if="e.enroll_status === 'enrolled'"
+                    class="icon-action"
+                    title="Re-enroll face"
+                    @click="reEnroll(e)"
+                  >
+                    <ScanFace :size="14" />
+                  </button>
+                  <button
+                    class="icon-action"
+                    :class="{ 'text-[var(--color-accent)]': e.is_roaming }"
+                    :title="e.is_roaming ? 'Remove roaming (back to this store only)' : 'Make roaming (any store, e.g. an auditor)'"
+                    @click="toggleRoaming(e)"
+                  >
+                    <Navigation :size="14" />
+                  </button>
+                  <button
+                    class="icon-action"
+                    :title="e.status === 'active' ? 'Disable' : 'Enable'"
+                    @click="toggleEmployee(e)"
+                  >
+                    <UserX v-if="e.status === 'active'" :size="14" />
+                    <UserCheck v-else :size="14" />
+                  </button>
+                  <button
+                    class="icon-action danger"
+                    title="Delete permanently"
+                    @click="deleteEmployee(e)"
+                  >
+                    <Trash2 :size="14" />
+                  </button>
+                </div>
+                <span v-if="e.status !== 'active'" class="chip chip-danger">Disabled</span>
+              </div>
             </div>
           </div>
         </div>

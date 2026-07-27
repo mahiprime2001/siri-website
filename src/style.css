@@ -26,6 +26,12 @@
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
 }
 
+html {
+  /* Bumps the rem base a bit so every Tailwind size/spacing utility across
+     the whole site scales up together, without touching every component. */
+  font-size: 106%;
+}
+
 html,
 body,
 #app {
